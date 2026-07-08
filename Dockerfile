@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.4
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM ocaml/opam:ubuntu-22.04-ocaml-5.3 AS builder
 
@@ -21,36 +20,28 @@ ENV PATH="/home/opam/.cargo/bin:${PATH}"
 RUN opam update --yes && eval $(opam env) && \
     opam install ocamlfind dune cmdliner.1.0.4 --yes
 
-# Cache-bust the opam pin layer below when any upstream HEAD changes. Without
-# this, BuildKit caches the RUN purely on its command string, so subsequent
-# builds keep reusing a stale clone — masking new commits to sstt/MLsem/rstt.
-# The GitHub API response body includes the commit SHA, so its hash changes
-# whenever the branch advances.
-ADD https://api.github.com/repos/E-Sh4rk/sstt/commits/main  /tmp/refs/sstt
-ADD https://api.github.com/repos/E-Sh4rk/MLsem/commits/main /tmp/refs/mlsem
-ADD https://api.github.com/repos/E-Sh4rk/rstt/commits/main  /tmp/refs/rstt
+# Keep the set-theoretic stack on the last RSTT vector representation that
+# carries vector sizes (AnyLength/CstLength/VarLength). RSTT b69f29c is the
+# parent of 83df726, which replaced those constructors with Vector/Scalar.
+ARG SSTT_REF=53f6a5391f5951eebf98a6658509c432ff8c4b8d
+ARG MLSEM_REF=8935c7e05dcc94a98de60ca35b3ea2de57e08f36
+ARG RSTT_REF=b69f29ca1b88894984f4318ec607dd669380e37b
 
-# sstt and MLsem are now public — no PAT needed.
+# sstt, MLsem, and RSTT are now public — no PAT needed.
 RUN eval $(opam env) && \
-    opam pin add sstt      "git+https://github.com/E-Sh4rk/sstt.git"   --yes && \
-    opam pin add sstt-repl "git+https://github.com/E-Sh4rk/sstt.git"   --yes && \
-    opam pin add sstt-bin  "git+https://github.com/E-Sh4rk/sstt.git"   --yes && \
+    opam pin add sstt      "git+https://github.com/E-Sh4rk/sstt.git#${SSTT_REF}"   --yes --no-action --ignore-pin-depends && \
+    opam pin add sstt-repl "git+https://github.com/E-Sh4rk/sstt.git#${SSTT_REF}"   --yes --no-action --ignore-pin-depends && \
+    opam pin add sstt-bin  "git+https://github.com/E-Sh4rk/sstt.git#${SSTT_REF}"   --yes --no-action --ignore-pin-depends && \
     for pkg in mlsem-types mlsem-common mlsem-system mlsem-lang \
                mlsem mlsem-app mlsem-bin; do \
-      opam pin add "$pkg" "git+https://github.com/E-Sh4rk/MLsem.git" --yes; \
+      opam pin add "$pkg" "git+https://github.com/E-Sh4rk/MLsem.git#${MLSEM_REF}" --yes --no-action --ignore-pin-depends; \
     done && \
-    opam pin add rstt      "git+https://github.com/E-Sh4rk/rstt.git" --yes && \
-    opam pin add rstt-repl "git+https://github.com/E-Sh4rk/rstt.git" --yes && \
-    opam pin add rstt-bin  "git+https://github.com/E-Sh4rk/rstt.git" --yes
+    opam pin add rstt      "git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF}" --yes --no-action --ignore-pin-depends && \
+    opam pin add rstt-repl "git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF}" --yes --no-action --ignore-pin-depends && \
+    opam pin add rstt-bin  "git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF}" --yes --no-action --ignore-pin-depends
 
-# r-parser is private. The PAT is injected via a BuildKit secret:
-#   • --mount=type=secret means it is never written to any image layer.
-#   • We immediately overwrite the remote URL so the PAT is not stored in
-#     .git/config inside the builder layer either.
-RUN --mount=type=secret,id=pat,mode=0444 \
-    PAT=$(cat /run/secrets/pat) && \
-    git clone "https://${PAT}@github.com/E-Sh4rk/r-parser.git" r-parser && \
-    git -C r-parser remote set-url origin https://github.com/E-Sh4rk/r-parser.git && \
+# r-parser is public; clone it directly without injecting credentials.
+RUN git clone "https://github.com/E-Sh4rk/r-parser.git" r-parser && \
     cd r-parser && \
     sed -i 's|git@github.com:|https://github.com/|' .gitmodules && \
     git submodule sync && \
@@ -68,7 +59,7 @@ ENV LD_LIBRARY_PATH="/home/opam/r-parser/core/tree-sitter/lib"
 COPY --chown=opam:opam . /home/opam/r-c-typing/
 WORKDIR /home/opam/r-c-typing
 RUN eval $(opam env) && \
-    opam install . --deps-only --yes && \
+    opam install . --deps-only --ignore-pin-depends --yes && \
     dune build
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────

@@ -10,7 +10,11 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+      # Keep CI on the last RSTT vector representation that carries sizes
+      # (AnyLength/CstLength/VarLength), with matching known-good stack pins.
+      SSTT_REF: 53f6a5391f5951eebf98a6658509c432ff8c4b8d
+      MLSEM_REF: 8935c7e05dcc94a98de60ca35b3ea2de57e08f36
+      RSTT_REF: b69f29ca1b88894984f4318ec607dd669380e37b
     steps:
       # Checkout repository
       - uses: actions/checkout@v6
@@ -69,32 +73,31 @@ jobs:
       - name: Set up dune
         run: opam install dune --yes
 
-      # Pin  packages in dependency order
-      - name: Pin private dep packages SST, MLsem
+      # Pin packages in dependency order.
+      - name: Pin SSTT, MLsem, and RSTT
         run: |
           eval $(opam env)
-          opam pin add sstt git+https://${PRIVATE_REPO_PAT}@github.com/E-Sh4rk/sstt.git --yes
-          opam pin add sstt-repl git+https://${PRIVATE_REPO_PAT}@github.com/E-Sh4rk/sstt.git --yes
-          opam pin add sstt-bin git+https://${PRIVATE_REPO_PAT}@github.com/E-Sh4rk/sstt.git --yes
+          opam pin add sstt git+https://github.com/E-Sh4rk/sstt.git#${SSTT_REF} --yes --no-action --ignore-pin-depends
+          opam pin add sstt-repl git+https://github.com/E-Sh4rk/sstt.git#${SSTT_REF} --yes --no-action --ignore-pin-depends
+          opam pin add sstt-bin git+https://github.com/E-Sh4rk/sstt.git#${SSTT_REF} --yes --no-action --ignore-pin-depends
 
           for pkg in mlsem-types mlsem-common mlsem-system mlsem-lang mlsem mlsem-app mlsem-bin; do
-            opam pin add $pkg git+https://${PRIVATE_REPO_PAT}@github.com/E-Sh4rk/MLsem.git --yes
+            opam pin add $pkg git+https://github.com/E-Sh4rk/MLsem.git#${MLSEM_REF} --yes --no-action --ignore-pin-depends
           done
 
-          opam pin add rstt      git+https://github.com/E-Sh4rk/rstt.git --yes
-          opam pin add rstt-repl git+https://github.com/E-Sh4rk/rstt.git --yes
-          opam pin add rstt-bin  git+https://github.com/E-Sh4rk/rstt.git --yes
+          opam pin add rstt      git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF} --yes --no-action --ignore-pin-depends
+          opam pin add rstt-repl git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF} --yes --no-action --ignore-pin-depends
+          opam pin add rstt-bin  git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF} --yes --no-action --ignore-pin-depends
 
       # FIX: Pin cmdliner to 1.0.4 to fix "Unbound value Term.info" error
       - name: Pin cmdliner version
         run: opam install cmdliner.1.0.4 --yes
 
-      # Install r-parser dependency from private repo
+      # Install r-parser dependency
       - name: Clone r-parser
         run: |
           rm -rf r-parser
-          # Use the PAT to clone the private repository
-          git clone https://${PRIVATE_REPO_PAT}@github.com/E-Sh4rk/r-parser.git
+          git clone https://github.com/E-Sh4rk/r-parser.git
 
       - name: Build r-parser
         run: |
@@ -126,7 +129,7 @@ jobs:
 
       # Install dependencies
       - name: Install dependencies
-        run: opam install . --deps-only --with-test --with-doc --yes
+        run: opam install . --deps-only --with-test --with-doc --ignore-pin-depends --yes
 
       # Install bisect_ppx
       - name: Install bisect_ppx
