@@ -1,5 +1,7 @@
 (library
  (name r_c_typing)
+ ; Public so that the TypR orchestrator can link against it.
+ (public_name r-c-typing.lib)
  (modules
   ast
   defs

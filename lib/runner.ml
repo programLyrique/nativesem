@@ -493,12 +493,16 @@ let run_on_file opts filename idenv env =
   in
   (idenv, env)
 
-let run_on_files opts filenames ?entry_points idenv env =
-  (* Parse all the files to past. Diagnostic phase timers report each of the
-     three coarse stages (parse / non-Fundef setup / Fundef pass) on a
-     [Phase: …] line so the gap between wall-clock and the per-function
-     timings can be attributed. [r-typing/scripts/parse_output.R] filters
-     these as noise so they don't leak into the per-function CSV. *)
+(** Parse each file to a [PAst] program, paired with its file name. Split out
+    of [run_on_files] so a caller that has to parse the sources anyway (TypR)
+    can hand the result to [run_on_pasts] instead of parsing them twice.
+
+    Diagnostic phase timers report each of the three coarse stages (parse /
+    non-Fundef setup / Fundef pass) on a [Phase: …] line so the gap between
+    wall-clock and the per-function timings can be attributed.
+    [r-typing/scripts/parse_output.R] filters these as noise so they don't leak
+    into the per-function CSV. *)
+let parse_files opts filenames =
   let t_parse_start = Unix.gettimeofday () in
   let pasts = List.map (fun filename ->
       if not (Sys.file_exists filename) then
@@ -512,6 +516,11 @@ let run_on_files opts filenames ?entry_points idenv env =
     ) filenames in
   if opts.log_times then
     Format.printf "Phase: parsing %.3f s@." (Unix.gettimeofday () -. t_parse_start);
+  pasts
+
+(** Type the already-parsed translation units [pasts] (a [(filename, past)]
+    list, as returned by [parse_files]). *)
+let run_on_pasts opts pasts ?entry_points idenv env =
   let t_callgraph_start = Unix.gettimeofday () in
   let full_call_graph = Call_graph.of_past_list (List.map snd pasts) in
   let entry_names = match entry_points with
@@ -717,6 +726,9 @@ let run_on_files opts filenames ?entry_points idenv env =
     Format.printf "Phase: fundef_pass %.3f s@."
       (Unix.gettimeofday () -. t_fundef_start);
   (idenv, env)
+
+let run_on_files opts filenames ?entry_points idenv env =
+  run_on_pasts opts (parse_files opts filenames) ?entry_points idenv env
 
 
 let run_on_package opts path idenv env =
