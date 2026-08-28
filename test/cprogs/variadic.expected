@@ -2,7 +2,7 @@ my_printf: any --> c_int_na
 
 call_no_varargs: () -> c_int_na
 
-call_one_int: t(c_int_na) -> c_int_na
+call_one_int: [c_int_na] -> c_int_na
 
-call_int_and_str: t(c_int_na, c_string) -> c_int_na
+call_int_and_str: [c_int_na, c_string] -> c_int_na
 

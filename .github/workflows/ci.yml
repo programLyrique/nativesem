@@ -10,11 +10,12 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      # Keep CI on the last RSTT vector representation that carries sizes
-      # (AnyLength/CstLength/VarLength), with matching known-good stack pins.
-      SSTT_REF: 53f6a5391f5951eebf98a6658509c432ff8c4b8d
-      MLSEM_REF: 8935c7e05dcc94a98de60ca35b3ea2de57e08f36
-      RSTT_REF: b69f29ca1b88894984f4318ec607dd669380e37b
+      # Known-good pins of the SSTT/MLsem/RSTT stack. RSTT here is the
+      # length-free vector representation (Vec.Vector / Vec.Scalar); the
+      # types/*.ty files and lib/defs.ml are written against it.
+      SSTT_REF: b267f021d7cf7ecb4ae21c1d790ca8a7b71171fa
+      MLSEM_REF: 6cd8d24d5fec02f2e64b1b80c396c0ef27c859fd
+      RSTT_REF: 8b197ea9366caff98c6460b1ef4801b72c77dfbb
     steps:
       # Checkout repository
       - uses: actions/checkout@v6

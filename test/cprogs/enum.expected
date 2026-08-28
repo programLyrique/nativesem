@@ -1,6 +1,6 @@
-keep_color: (t(c(4) | c(7)) -> c_false) & (t(c(5)) | t(c_false) -> c(4))
+keep_color: ([c(4) | c(7)] -> c_false) & ([c(5)] | [c_false] -> c(4))
 
-flip_direction: (t(c(-1)) -> c_true) & (t(c_false) -> c_false) & (t(c_true) -> c(-1))
+flip_direction: ([c(-1)] -> c_true) & ([c_false] -> c_false) & ([c_true] -> c(-1))
 
 mask_value: () -> c_true
 

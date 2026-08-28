@@ -1,8 +1,8 @@
-log_msg: t(c_string) --> c_void
+log_msg: [c_string] --> c_void
 
-log_line: t(c_int_na) --> c_void
+log_line: [c_int_na] --> c_void
 
-len: t(c_string) --> c_int_na
+len: [c_string] --> c_int_na
 
 use_file: () -> ()
 

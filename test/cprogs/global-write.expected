@@ -1,12 +1,12 @@
-write_global_array: (t(*c_int_na) -> ()) & (t(c_null) -> empty)
+write_global_array: ([*c_int_na] -> ()) & ([c_null] -> empty)
 
-write_global_scalar: t(c_int_na) -> ()
+write_global_scalar: [c_int_na] -> ()
 
 read_global_scalar: () -> c_int_na
 
-local_shadows_global: ∀'a. t(*(c_int_na & 'a)) -> 'a
+local_shadows_global: ∀'a. [*(c_int_na & 'a)] -> 'a
 
 read_shadowed_global: () -> c_double
 
-local_shadows_different_global: ∀'a. t(*(c_int_na & 'a)) -> 'a
+local_shadows_different_global: ∀'a. [*(c_int_na & 'a)] -> 'a
 

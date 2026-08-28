@@ -1,6 +1,6 @@
 assertPositive_error:
 untypeable: untypeable application
 function: arrow
-argument: t(c("Input must be a single real number"))
-assertPositive_fail: ∀'a,'b. t(dbl[^(1 & int('b))] & 'a) -> dbl[^(1 & int('b))] & 'a
+argument: [c("Input must be a single real number")]
+assertPositive_fail: ∀'a. [DBL1 & 'a] -> DBL1 & 'a
 

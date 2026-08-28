@@ -8,6 +8,14 @@ module StrSet = Set.Make(String)
 
 exception Inference_timeout of float
 
+(* [TyScheme.norm_and_simpl] was removed from mlsem when the normalization hook
+   it used became a separate configuration point (see the bottom of this file).
+   The rstt-specific simplification is now applied explicitly. *)
+let norm_and_simpl tys =
+  let vars, gty = TyScheme.get tys in
+  TyScheme.mk vars (GTy.map Rstt.TyOp.simplify gty)
+  |> TyScheme.simplify_factorize
+
 type cmd_options = {
   cst : bool;
   past : bool;
@@ -220,7 +228,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
           let renvs = System.Refinement.refinements env m in
           let reconstructed = System.Reconstruction.infer env renvs m in
           let typ = System.Checker.typeof_def env reconstructed m in
-          let tys = TyScheme.norm_and_simpl typ in
+          let tys = norm_and_simpl typ in
           let (vars, typ) = TyScheme.get tys in
           let typ = GTy.ub typ in
           (*Format.printf "%a: upper bound= %a@.@." Variable.pp v  Ty.pp typ ;*)
@@ -365,7 +373,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         (* For SEXP globals, install a gradual annotation [empty .. any_sexp]
            instead of pinning the type at [any_sexp]. The C declaration
            [extern SEXP foo] only constrains the upper bound (any SEXP);
-           which SEXP sub-family ([sym] / [env] / [lang] / [v(chr)] / ...)
+           which SEXP sub-family ([sym] / [env] / [lang] / [v(CHR)] / ...)
            a given read corresponds to is decided by the use-site, and
            gradual reads let the type checker refine accordingly. Without
            this, every read of e.g. [syms_x] returns the full [any_sexp]
@@ -756,12 +764,16 @@ let run_on_package opts path idenv env =
   Format.printf "@.";
   run_on_files opts c_files ~entry_points idenv env
   
+(* Solutions produced by tallying may assign a type variable a primitive
+   component that is not "whole" (e.g. [INT \ 42L]). Such a component cannot
+   appear as the element type of a non-scalar vector, so rstt widens/narrows it
+   back to a whole component -- dropping the solution when that is impossible.
+   Same hook as Rsem uses. *)
+let subst_normalization _ substs = substs |> List.filter_map Rstt.TyOp.normalize_subst
+
 let () =
-  (* Register before rstt's own params so the overrides for [Prim] and [Vec]
-     win in [TagMap.of_list] (later-merged extensions overwrite earlier ones,
-     and [add_printer_param] prepends — so earliest call ends up last). *)
-  Mlsem_types.PrinterCfg.add_printer_param Prim_pp.printer_params ;
-  Mlsem_types.PrinterCfg.add_printer_param Vec_pp.printer_params ;
+  (* rstt registers its own printers for [Prim], [Vec], [Lst], ... at module
+     initialisation; [Rstt.Pp.printer_params ()] returns the accumulated set. *)
   Mlsem_types.PrinterCfg.set_descr_printer Rstt.Pp.print_descr_ctx ;
   Mlsem_types.PrinterCfg.set_printer Rstt.Pp.print ;
   Mlsem_types.PrinterCfg.add_printer_param (Rstt.Pp.printer_params ()) ;
@@ -772,7 +784,8 @@ let () =
      diagnostics like [r_attrib_get_cb: (any | chr, ...)] become readable. *)
   Mlsem_types.PrinterCfg.add_printer_param
     (Rstt.Pp.printer_params' [(Rstt.Attr.any, "attr_any"); (Defs.any_sexp, "any_sexp")]) ;
-  Mlsem_system.Config.normalization_fun := Rstt.Simplify.partition_vecs
+  Mlsem_system.Config.normalization_fun := Fun.id ;
+  Mlsem_system.Config.subst_normalization_fun := subst_normalization
 
 let%test "filter predicate with Some substring" =
   let pred = make_substring_pred (Some "from") in

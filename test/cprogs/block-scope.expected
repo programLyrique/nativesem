@@ -1,8 +1,8 @@
-local_shadows_global_whole_fn: ∀'a. t(*(c_int_na & 'a)) -> 'a
+local_shadows_global_whole_fn: ∀'a. [*(c_int_na & 'a)] -> 'a
 
-local_shadows_global_inner_block: ∀'a. t(c_int_na & 'a) -> c_int_na & 'a
+local_shadows_global_inner_block: [c_int_na] -> c_int_na
 
 sibling_blocks: () -> c_false
 
-doubly_nested: ∀'a. t(c_int_na & 'a) -> c_int_na & 'a
+doubly_nested: ∀'a. [c_int_na & 'a] -> c_int_na & 'a
 

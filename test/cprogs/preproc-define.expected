@@ -1,8 +1,8 @@
-add_one: t(int) -> int1
+add_one: [INT] -> INT1
 
-add_magic: t(int) -> int1
+add_magic: [INT] -> INT1
 
-alias_simple: t(int) -> int1
+alias_simple: [INT] -> INT1
 
-alias_chain: t(int) -> int1
+alias_chain: [INT] -> INT1
 

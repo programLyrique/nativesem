@@ -1,6 +1,6 @@
-check_interrupt_fn: t(*c_void) -> ()
+check_interrupt_fn: [*c_void] -> ()
 
 pending_interrupt: () -> c_bool
 
-build_extptr: (t(^int, any_sexp, any_sexp) -> externalptr(c_int)) & (t(int, any_sexp, any_sexp) -> externalptr(c_int_na))
+build_extptr: ([INT, any_sexp, any_sexp] -> externalptr(c_int_na)) & ([^INT1, any_sexp, any_sexp] -> externalptr(c_int))
 

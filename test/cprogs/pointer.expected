@@ -1,16 +1,16 @@
-assign: t(*c_double) -> ()
+assign: [*c_double] -> ()
 
-assign_in_array: (t(*(*c_double)) -> ()) & (t(c_null) -> empty)
+assign_in_array: ([*(*c_double)] -> ()) & ([c_null] -> empty)
 
-assign_in_struct: (t(*{ C : *(*c_double) ; n : c_int_na }) -> ()) & (t(*{ C : c_null ; n : c_int_na }) -> empty)
+assign_in_struct: ([*{ C : *(*c_double) ; n : c_int_na }] -> ()) & ([*{ C : c_null ; n : c_int_na }] -> empty)
 
-assign_n: t(c_int_na) -> *{ C : *(*c_double) ; n : c_int_na }
+assign_n: [c_int_na] -> *{ C : *(*c_double) ; n : c_int_na }
 
-star_return: ∀'a,'b. t(*(c_int_na & 'b) & 'a, c_int_na) -> *(c_int_na & 'b) & 'a
+star_return: ∀'a,'b. [*(c_int_na & 'b) & 'a, c_int_na] -> *(c_int_na & 'b) & 'a
 
-star_then_read: ∀'a. t(*(c_int_na & 'a), c_int_na) -> 'a
+star_then_read: ∀'a. [*(c_int_na & 'a), c_int_na] -> 'a
 
-star_void: t(*c_int_na, c_int_na) -> ()
+star_void: [*c_int_na, c_int_na] -> ()
 
-star_two_writes: t(*c_int_na, c_int_na, c_int_na) -> ()
+star_two_writes: [*c_int_na, c_int_na, c_int_na] -> ()
 

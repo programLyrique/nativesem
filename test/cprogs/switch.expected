@@ -1,12 +1,12 @@
-isInteger2: (t(int) -> c_true) & (t((env | externalptr | lang | list | v(chr | clx | dbl | lgl | raw) | arrow) | null | p(chr) | sym) -> c_false)
+isInteger2: ([INT] -> c_true) & ([((CHR | CLX | DBL | LGL | RAW) | env | externalptr | lang | list | arrow) | null | p(CHR) | sym] -> c_false)
 
-isInteger3: (t(int) -> c_true) & (t((env | externalptr | lang | list | v(chr | clx | dbl | lgl | raw) | arrow) | null | p(chr) | sym) -> c_false)
+isInteger3: ([INT] -> c_true) & ([((CHR | CLX | DBL | LGL | RAW) | env | externalptr | lang | list | arrow) | null | p(CHR) | sym] -> c_false)
 
-checkList: (t(list) -> c_true) & (t((env | externalptr | lang | vec | arrow) | null | p(chr) | sym) -> c_false)
+checkList: ([list] -> c_true) & ([(env | externalptr | lang | vec | arrow) | null | p(CHR) | sym] -> c_false)
 
-isVectorList: ∀'a. t(list) --> c_true & t((env | externalptr | lang | v('a) | arrow) | null | p(chr) | sym) --> c_false
+isVectorList: ∀'a. ([list] --> c_true) & ([(env | externalptr | lang | vec & v('a) | arrow) | null | p(CHR) | sym] --> c_false)
 
-length2: ∀'a. (t(null) -> c_false) & (t(p(chr)) -> c_int) & (t(vec[^int('a)]) -> c_int & c_int_na('a))
+length2: ([null] -> c_false) & ([vec1] -> c_true) & ([p(CHR)] | [vec] -> c_int)
 
-length3: ∀'a. (t(p(chr)) -> c_int) & (t((env | externalptr | lang | list | arrow) | null | sym) -> c_true) & (t(chr[^int('a)]) | t(clx[^int('a)]) | t(dbl[^int('a)]) | t(int[^int('a)]) | t(lgl[^int('a)]) | t(raw[^int('a)]) -> c_int & c_int_na('a))
+length3: ([CHR] | [CLX] | [DBL] | [INT] | [LGL] | [p(CHR)] | [raw] -> c_int) & ([CHR1] | [CLX1] | [DBL1] | [INT1] | [LGL1] | [raw1] | [(env | externalptr | lang | list | arrow) | null | sym] -> c_true)
 

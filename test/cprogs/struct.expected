@@ -1,16 +1,16 @@
-f: t({ x : c_int_na ; y : c_int_na }) -> ()
+f: [{ x : c_int_na ; y : c_int_na }] -> ()
 
 g: () -> { x : c_true ; y : c(2) }
 
-h: t(*{ x : c_int_na ; y : c_int_na }) -> ()
+h: [*{ x : c_int_na ; y : c_int_na }] -> ()
 
-h2: t(*{ x : c_int_na ; y : c_int_na }) -> ()
+h2: [*{ x : c_int_na ; y : c_int_na }] -> ()
 
-i: t(*{ x : c_int_na ; y : c_int_na }) -> ()
+i: [*{ x : c_int_na ; y : c_int_na }] -> ()
 
-i2: t(*{ x : c_int_na ; y : c_int_na }) -> ()
+i2: [*{ x : c_int_na ; y : c_int_na }] -> ()
 
-ap_create_problem: t(*c_double, c_int_na) -> *{ n : c_int_na ; C : *(*c_double) ; c : *(*c_double) ; s : *c_int_na ; f : *c_int_na ; na : c_int_na ; runs : c_int_na ; cost : c_double ; rtime : any }
+ap_create_problem: [*c_double, c_int_na] -> *{ n : c_int_na ; C : *(*c_double) ; c : *(*c_double) ; s : *c_int_na ; f : *c_int_na ; na : c_int_na ; runs : c_int_na ; cost : c_double ; rtime : any }
 
-unsat_iter: (t(*{ x : c_int_na ; p : *c_int_na }, *{ p : *c_int_na ; a : c_int_na }) -> ()) & (t(*{ x : c_int_na ; p : *c_int_na }, c_null) | t(c_null, *{ p : *c_int_na ; a : c_int_na }) -> empty)
+unsat_iter: ([*{ x : c_int_na ; p : *c_int_na }, *{ p : *c_int_na ; a : c_int_na }] -> ()) & ([*{ x : c_int_na ; p : *c_int_na }, c_null] | [c_null, *{ p : *c_int_na ; a : c_int_na }] -> empty)
 

@@ -1,16 +1,16 @@
 create_str_from_c_string: () -> "hello"
 
-create_str_from_chr: () -> "world"
+create_str_from_chr: () -> CHR1
 
 create_str_from_concat: () -> "hello world"
 
-get_c_string_from_str: ∀'a. (t(v[^(int \ 0)](^chr('a))) -> c_string('a)) & (t(v[^(int \ 0)](chr('a))) -> c("NA") | c_string('a)) & (t(chr0) | t(v0(clx | dbl | int | lgl | raw)) | t(v[^(int \ 0)](clx | dbl | int | lgl | raw)) -> c_null)
+get_c_string_from_str: ([CHR] -> c_string | c_null) & ([CHR1] -> c_string) & ([clx] -> c_null)
 
-is_blank_string: (t(p(^(chr \ ""))) -> c_false) & (t(null | p("")) -> c_true)
+is_blank_string: ([null] -> c_true) & ([null | p(CHR)] -> c_bool)
 
-to_char: ∀'a. (t(p(chr) & 'a) -> na_string & 'a) & (t('a & ((env | externalptr | lang | list | vec0 | arrow) | null | p(chr))) -> na_string) & (t('a & ((env | externalptr | lang | list | vec0 | vec[^(1..)] | arrow) | null | p(chr) | sym)) -> p(chr))
+to_char: ∀'a. ([p(CHR) & 'a] -> 'a) & (['a & ((env | externalptr | lang | list | vec | arrow) | null | sym)] -> p(CHR))
 
-make_url_names: () -> v9("" | "fragment" | "host" | "password" | "path" | "port" | "query" | "scheme" | "url" | "user")
+make_url_names: () -> CHR
 
-R_parse: (t(p(^chr), any_sexp) -> empty) & (t((env | externalptr | lang | list | vec0 | vec[^(1..)] | arrow) | null | p(chr) | sym, any_sexp) -> ())
+R_parse: [p(CHR), any_sexp] | [(env | externalptr | lang | list | vec | arrow) | null | sym, any_sexp] -> ()
 

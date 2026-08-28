@@ -1,8 +1,8 @@
-Rf_xlength: ∀'a. t(p(chr)) --> c_int & t(vec[^int('a)]) --> c_int & c_int_na('a)
+Rf_xlength: ([p(CHR)] --> c_int) & ([vec] --> c_int) & ([vec1] --> c_true)
 
-r_length: ∀'a. (t(vec[^int('a)]) -> c_int & c_int_na('a)) & (t(p(chr) | vec[^int('a)]) -> c_int)
+r_length: ([vec1] -> c_true) & ([p(CHR) | vec] -> c_int)
 
-my_length: ∀'a. (t(vec[^int('a)]) -> c_int & c_int_na('a)) & (t(p(chr) | vec[^int('a)]) -> c_int)
+my_length: ([vec1] -> c_true) & ([p(CHR) | vec] -> c_int)
 
-raw_length: ∀'a. (t(vec[^int('a)]) -> c_int & c_int_na('a)) & (t(p(chr) | vec[^int('a)]) -> c_int)
+raw_length: ([vec1] -> c_true) & ([p(CHR) | vec] -> c_int)
 

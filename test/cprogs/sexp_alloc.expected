@@ -1,10 +1,10 @@
-alloc_int_literal: ∀'a. t(c_int & c_int_na('a)) -> int[^int('a)]
+alloc_int_literal: ([c_int] -> INT) & ([c_true] -> INT1)
 
-alloc_int_enum: ∀'a. t(c_int & c_int_na('a)) -> int[^int('a)]
+alloc_int_enum: ([c_int] -> INT) & ([c_true] -> INT1)
 
-alloc_double_define: ∀'a. t(c_int & c_int_na('a)) -> dbl[^int('a)]
+alloc_double_define: ([c_int] -> DBL) & ([c_true] -> DBL1)
 
 alloc_oob:
 untypeable: untypeable application
-function: t(list, 'I21) --> list & t(p(chr), c_int & c_int_na('I21)) --> v[^int('I21)]("") & t(prim & 'I22, c_int & c_int_na('I21)) --> v[^int('I21)]('I22)
-argument: t(c(99), 'I18)
+function: ([list, any] --> list) & ([p(CHR), c_true] --> "") & ([prim & 'I22, c_int] --> vec & v('I22)) & ([prim & 'I22, c_true] --> vec1 & v1('I22))
+argument: [c(99), 'I18]

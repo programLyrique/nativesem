@@ -20,12 +20,12 @@ ENV PATH="/home/opam/.cargo/bin:${PATH}"
 RUN opam update --yes && eval $(opam env) && \
     opam install ocamlfind dune cmdliner.1.0.4 --yes
 
-# Keep the set-theoretic stack on the last RSTT vector representation that
-# carries vector sizes (AnyLength/CstLength/VarLength). RSTT b69f29c is the
-# parent of 83df726, which replaced those constructors with Vector/Scalar.
-ARG SSTT_REF=53f6a5391f5951eebf98a6658509c432ff8c4b8d
-ARG MLSEM_REF=8935c7e05dcc94a98de60ca35b3ea2de57e08f36
-ARG RSTT_REF=b69f29ca1b88894984f4318ec607dd669380e37b
+# Known-good pins of the set-theoretic stack. This RSTT is the length-free
+# vector representation (Vec.Vector / Vec.Scalar); the types/*.ty files and
+# lib/defs.ml are written against it. Keep in sync with .github/workflows/ci.yml.
+ARG SSTT_REF=b267f021d7cf7ecb4ae21c1d790ca8a7b71171fa
+ARG MLSEM_REF=6cd8d24d5fec02f2e64b1b80c396c0ef27c859fd
+ARG RSTT_REF=8b197ea9366caff98c6460b1ef4801b72c77dfbb
 
 # sstt, MLsem, and RSTT are now public — no PAT needed.
 RUN eval $(opam env) && \

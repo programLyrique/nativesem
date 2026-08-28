@@ -4,7 +4,7 @@ Entry points for .Call convention:
 
 Entry points for .C convention:
 
-target_leaf: ∀'a. t(any_sexp & 'a) -> any_sexp & 'a
+target_leaf: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 
-target_root: ∀'a. t(any_sexp & 'a) -> any_sexp & 'a
+target_root: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 

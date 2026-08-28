@@ -1,20 +1,20 @@
-r_plus_scalar_real: t(dbl, dbl) -> dbl1
+r_plus_scalar_real: [DBL, DBL] -> DBL1
 
-make_int_or_float: (t(c_false) -> dbl2) & (t(c_int_na \ c_false) -> int1)
+make_int_or_float: ([c_false] -> DBL) & ([c_int_na \ c_false] -> INT1)
 
-incr_real: t(dbl1) -> dbl1
+incr_real: [DBL1] -> DBL1
 
-test_int_or_real: (t(dbl) -> c_false) & (t(int) -> c_true) & (t((~(dbl | int))<...> | null | p(chr) | sym) -> ())
+test_int_or_real: ([DBL] -> c_false) & ([INT] -> c_true) & ([(~(DBL | INT))<...> | null | p(CHR) | sym] -> ())
 
-test_isInt: (t(int) -> c_true) & (t((~int)<...> | null | p(chr) | sym) -> c_false)
+test_isInt: ([INT] -> c_true) & ([(~INT)<...> | null | p(CHR) | sym] -> c_false)
 
-test_isInt2: (t(int) -> c_true) & (t((~int)<...> | null | p(chr) | sym) -> c_false)
+test_isInt2: ([INT] -> c_true) & ([(~INT)<...> | null | p(CHR) | sym] -> c_false)
 
-r_plus_scalar_strict: (t(dbl, dbl) -> dbl1) & (t(int, int) -> int1)
+r_plus_scalar_strict: ([DBL, DBL] -> DBL1) & ([INT, INT] -> INT1)
 
-r_plus_scalar: (t(int, int) -> int1) & (t(dbl, dbl) | t(dbl, int) | t(int, dbl) -> dbl1)
+r_plus_scalar: ([INT, INT] -> INT1) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> DBL1)
 
-r_plus_all: ∀'a,'b. (t(int[^int('b)], int[^int('b)]) -> int[^int('b)]) & (t(dbl[^int('a)], dbl) | t(dbl[^int('a)], int) | t(int[^int('a)], dbl) -> dbl) & (t(dbl[^int('a)], dbl[^int('a)]) | t(dbl[^int('a)], int[^int('a)]) | t(int[^int('a)], dbl[^int('a)]) -> dbl[^int('a)])
+r_plus_all: ([INT, INT] -> INT) & ([INT1, INT1] -> INT1) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> DBL) & ([DBL1, DBL1] | [DBL1, INT1] | [INT1, DBL1] -> DBL1)
 
-R_integer_plus: t(c_int_na, c(..-1), *c_bool \ c_null) | t(c_int_na, c(..-1), c_null) | t(c_int_na, c(1..), *c_bool \ c_null) | t(c_int_na, c(1..), c_null) | t(c_int_na, c_int_na \ (c(..-1) | c(1..)), *c_bool) -> c_int_na
+R_integer_plus: [c_int_na, c(..-1), *c_bool \ c_null] | [c_int_na, c(..-1), c_null] | [c_int_na, c(1..), *c_bool \ c_null] | [c_int_na, c(1..), c_null] | [c_int_na, c_int_na \ (c(..-1) | c(1..)), *c_bool] -> c_int_na
 
