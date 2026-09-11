@@ -88,15 +88,21 @@ Operational rule: `.ty` definitions must never be overridden by inferred C types
 
 **Required before building:**
 
-Set the tree-sitter environment variables so they point to the `r-parser` installation used by this checkout.
-
-Alternatively, set the variables manually:
+Source `setup-env.sh`, which derives the tree-sitter paths from an `r-parser`
+checkout. It defaults to `../r-parser` (next to this repository); set
+`R_PARSER_PATH` if yours lives elsewhere. `make build` / `make test` source it
+for you.
 
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/.../r-parser/core/tree-sitter/lib/
-export TREESITTER_INCDIR=/.../r-parser/core/tree-sitter/include/
-export TREESITTER_LIBDIR=/.../r-parser/core/tree-sitter/lib/
+source ./setup-env.sh                                # default ../r-parser
+R_PARSER_PATH=/path/to/r-parser source setup-env.sh  # elsewhere
 ```
+
+Do not run `opam install . --deps-only` in a switch set up this way: it
+replaces the local `tree-sitter` with the public opam package, which has no
+`run` sublibrary, and the build then fails with `Library "tree-sitter.run" not
+found`. See the "Tree sitter" section of [README.md](../README.md) for why and
+how to recover.
 
 See [.github/workflows/ci.yml](.github/workflows/ci.yml) for CI setup patterns.
 
@@ -113,17 +119,22 @@ dune exec bin/main.exe -- <file.c>  # Run type inference on a C file
 
 For substantial parser, preprocessor, PAst, runner, or package-handling changes, do not stop at `dune build` or `dune runtest`.
 
-- Validate the change against the external pipeline in `/home/pierre/Documents/RLanguage/r-typing`.
+- Validate the change against the external pipeline in the `r-typing` repository, checked out next to this one (`../r-typing`).
 - Run the pipeline on at least one small real package such as `clue` or `jsonlite` via `scripts/run_one_package.sh`.
 - Treat package-level crashes, new nonzero exits, decreases in the number of typed functions for a package, or other obvious regressions in the pipeline output as blocking until investigated.
 
 Example:
 
 ```bash
-cd /home/pierre/Documents/RLanguage/r-typing
-CHECKER_DIR=/home/pierre/Documents/RLanguage/r-c-typing scripts/run_one_package.sh work/sources/jsonlite work/raw_output_test
-CHECKER_DIR=/home/pierre/Documents/RLanguage/r-c-typing scripts/run_one_package.sh work/sources/clue work/raw_output_test
+CHECKER_DIR="$PWD"          # this repository, holding _build/default/bin/main.exe
+cd ../r-typing
+CHECKER_DIR="$CHECKER_DIR" scripts/run_one_package.sh work/sources/jsonlite work/raw_output_test
+CHECKER_DIR="$CHECKER_DIR" scripts/run_one_package.sh work/sources/clue work/raw_output_test
 ```
+
+Pass `CHECKER_DIR` explicitly: `r-typing`'s own defaults (`Makefile` and
+`scripts/run_one_package.sh`) still point at paths from before this repository
+was renamed and moved, so omitting it silently runs the wrong checker or none.
 
 ### Code Coverage Analysis
 

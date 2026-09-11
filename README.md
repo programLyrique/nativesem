@@ -37,6 +37,36 @@ export TREESITTER_INCDIR=$R_PARSER_PATH/core/tree-sitter/include
 export TREESITTER_LIBDIR=$R_PARSER_PATH/core/tree-sitter/lib
 ```
 
+### `opam install --deps-only` will break the build
+
+`r-parser/core/tree-sitter.opam` declares empty `build:`/`install:` sections, so
+`opam pin add tree-sitter core/` only registers the package to satisfy the
+dependency -- it installs nothing. The switch entry actually comes from
+r-parser's own `make install` (`dune install` in `core/`).
+
+The consequence: `opam install . --deps-only` resolves `tree-sitter` from
+opam.ocaml.org and overwrites that entry. The public package has `json` and
+`ocaml` sublibraries but no `run`, so the next build fails with
+
+```
+File "c-parser/dune", line 7, characters 28-43:
+Error: Library "tree-sitter.run" not found.
+```
+
+Re-pinning alone does not fix it (the pin installs nothing). Reinstall from
+r-parser instead:
+
+```bash
+cd $R_PARSER_PATH/core && dune build && dune install
+```
+
+To check which one you have, look for the package metadata -- the local install
+writes a `dune-package`, and `tree-sitter.run` should be listed:
+
+```bash
+ls $(opam var lib)/tree-sitter/dune-package && ocamlfind list | grep tree-sitter
+```
+
 ## Common commands
 
 The repository includes a `Makefile` that wraps the required environment setup:
