@@ -9,7 +9,7 @@
 # ============================================================================
 # CONFIGURATION - UPDATE THIS PATH TO YOUR r-parser INSTALLATION
 # ============================================================================
-R_PARSER_PATH="/home/pierre/Documents/Rlanguage/r-parser"  # <-- UPDATE THIS PATH
+R_PARSER_PATH="/home/pierre/Documents/RLanguage/types-for-R/r-parser"  # <-- UPDATE THIS PATH
 
 # Check if r-parser exists at the configured path
 if [ ! -d "$R_PARSER_PATH" ]; then
