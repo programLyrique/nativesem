@@ -8,6 +8,54 @@ module StrSet = Set.Make(String)
 
 exception Inference_timeout of float
 
+(* ===== Structured outcomes =====
+
+   [infer_ast] and [infer_def] print every result and then return their input
+   environments unchanged when inference fails, so an embedder (TypR) can see
+   *whether* a native function typed -- via [find_existing_binding] -- but not
+   *why* it did not. With [fallback_c_signature] on it cannot even see that: a
+   function bound at its declared C signature is indistinguishable from one
+   that really typed.
+
+   [on_outcome] reports each terminal result beside the print that already
+   happens. A [ref] rather than an optional argument because [infer_def]
+   recurses and is partially applied in three folds, and because this layer is
+   already configured through global mutable state ([Config.infer_overload],
+   [Config.void_ty], the printer config); an embedder installs and restores it
+   around its run.
+
+   Four things to know when consuming it:
+
+   - Outcomes fire only for units the [visible_name] predicate accepts. Items
+     reached by recursing into [PAst.Include] are never visible, so a package
+     that includes <R.h> reports its own definitions rather than the thousands
+     of declarations the header drags in. This is the one place the hook is
+     narrower than the printing: the failure arms of [infer_ast] print
+     unconditionally, but report only when visible.
+   - Conversely it is wider than the printing for [`Define] and for file-scope
+     variables, whose [print_visible] call is behind [opts.debug]. Those
+     outcomes fire either way -- the debug flag is a display choice, and a
+     measurement should not depend on it. Expect outcomes with no counterpart
+     in stdout.
+   - A function that fails and is then rescued by [fallback_c_signature]
+     reports *twice*, in this order: the failure ([Timeout] / [Untypeable] /
+     [Internal]), then [Fallback]. That pair is the point -- it is what makes a
+     substituted signature distinguishable from a real inference.
+   - [`SimpleC] mirrors [print_visible]'s kind of the same name, and like it is
+     only produced under [~simple_c_fun:true]. Every in-tree caller of that is
+     the [PAst.Include] recursion, which is invisible, so the constructor is
+     unreachable unless an embedder opts in explicitly. *)
+type outcome =
+  | Typed of { header : [ `Default | `SimpleC | `DotC | `Define ] ;
+               var : Variable.t ; tys : TyScheme.t }
+  | Fallback of TyScheme.t
+  | Timeout of float
+  | Untypeable of { title : string ; descr : string option }
+  | Internal of string    (* Not_found / Invalid_argument / tallying Unsat *)
+
+let on_outcome : (name:string -> elapsed:float -> outcome -> unit) ref =
+  ref (fun ~name:_ ~elapsed:_ _ -> ())
+
 (* [TyScheme.norm_and_simpl] was removed from mlsem when the normalization hook
    it used became a separate configuration point (see the bottom of this file).
    The rstt-specific simplification is now applied explicitly. *)
@@ -189,6 +237,12 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
     if opts.log_times && visible then
       Format.printf "  timing: %.6f s@." (Unix.gettimeofday () -. started)
   in
+  (* Same clock as [log_timing], so a reported [elapsed] and a printed
+     [timing:] line for the same function agree. *)
+  let report o =
+    if visible then
+      !on_outcome ~name ~elapsed:(Unix.gettimeofday () -. started) o
+  in
   if opts.debug then
     Format.printf "Type inference for function %s@." name;
   (* [fallback] is a thunk that produces the declared C signature when body
@@ -208,6 +262,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
              don't mistake [fallback: <type>] for a new function header. *)
           if visible then
             Format.printf "  fallback: @[<h>%a@]@.@." TyScheme.pp_short tys;
+          report (Fallback tys) ;
           (StrMap.add name v idenv, Env.add v tys env, decl)
         with Failure _ -> (idenv, env, decl))
   in
@@ -235,6 +290,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
           (* We only keep the upper bound as type for v and add it to the environment *)
           let tys = TyScheme.mk vars (GTy.mk typ) in
           print_visible ~debug:opts.debug ~extra:log_timing `Default visible v tys;
+          report (Typed { header = `Default ; var = v ; tys }) ;
           (StrMap.add name v idenv, Env.add v tys env, decl))
     else
       idenv, env, decl
@@ -244,6 +300,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
       if not opts.mlsem && opts.debug then
         Format.printf "MLsem AST:@.%a@." Mlsem.System.Ast.pp (mlsem_ast_for_dump ());
       log_timing ();
+      report (Timeout seconds) ;
       apply_fallback ()
   | System.Checker.Untypeable err ->
       Format.printf "%s:@.untypeable: %s@." name err.title;
@@ -251,6 +308,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
       if not opts.mlsem && opts.debug  then (* Still print the mlsem ast*)
         Format.printf "MLsem AST:@.%a@." Mlsem.System.Ast.pp (mlsem_ast_for_dump ());
       log_timing ();
+      report (Untypeable { title = err.title ; descr = err.descr }) ;
       apply_fallback ()
   | Not_found ->
       (* Refinement/reconstruction occasionally raises Not_found when an
@@ -265,6 +323,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
       if not opts.mlsem && opts.debug then
         Format.printf "MLsem AST:@.%a@." Mlsem.System.Ast.pp (mlsem_ast_for_dump ());
       log_timing ();
+      report (Internal "Not_found") ;
       apply_fallback ()
   | Invalid_argument msg ->
       (* mlsem reconstruction asserts [Cannot assign to an immutable variable]
@@ -272,6 +331,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
          is reported by name and the rest of the package still gets processed. *)
       Format.printf "%s:@.untypeable: invalid mlsem AST: %s@." name msg;
       log_timing ();
+      report (Internal (Printf.sprintf "invalid mlsem AST: %s" msg)) ;
       apply_fallback ()
   | exn when
       let slot = Printexc.exn_slot_name exn in
@@ -295,12 +355,23 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
       Format.printf "%s:@.untypeable: mlsem tallying Unsat (%s)@." name
         (Printexc.to_string exn);
       log_timing ();
+      report (Internal (Printf.sprintf "mlsem tallying Unsat (%s)"
+        (Printexc.to_string exn))) ;
       apply_fallback ()
 
 (** past: the parsed AST *)
 let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=false) ?(convention=None) ?(skip_if_defined=false) visible_name opts (idenv, env, decl)  past =
   let name = PAst.top_level_unit_name past in
   let visible = visible_name name in
+  let started = Unix.gettimeofday () in
+  (* The arms below rebind [name]; [PAst.top_level_unit_name] returns exactly
+     that binding for every arm that reports, so take it per call site. The
+     arms reaching [infer_ast] report from there instead, with their own
+     clock. *)
+  let report name o =
+    if visible then
+      !on_outcome ~name ~elapsed:(Unix.gettimeofday () -. started) o
+  in
 
   (* When processing items from external headers, don't override an existing
      definition (e.g. from a .ty file or a previous header). *)
@@ -326,6 +397,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       in
       if opts.debug && visible then
         print_visible ~debug:opts.debug `Define visible v ty;
+      report name (Typed { header = `Define ; var = v ; tys = ty }) ;
       (StrMap.add name v idenv, Env.add v ty env, decl)
   | _, PAst.TypeDecl (name, ty) ->
       let env =
@@ -391,6 +463,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         let env = MVariable.add_to_env v tys (Env.rm v env) in
         if opts.debug && visible then
           print_visible ~debug:opts.debug `Default visible v tys;
+        report name (Typed { header = `Default ; var = v ; tys }) ;
         (StrMap.add name v idenv, env, decl)
       end
   | _,PAst.Fundef (ret_ty, name, params, _) when convention=Some(Package.C) ->
@@ -398,7 +471,9 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       let ty = C_interface.infer_dotC ~typedef_map:decl ret_ty params |> GTy.mk |> TyScheme.mk_mono in
       if has_ty_binding name then begin
         (match find_existing_binding name idenv env with
-         | Some (v, tys) -> print_visible ~debug:opts.debug `DotC visible v tys
+         | Some (v, tys) ->
+             print_visible ~debug:opts.debug `DotC visible v tys ;
+             report name (Typed { header = `DotC ; var = v ; tys })
          | None -> ());
         (idenv, env, decl)
       end else if is_declaration past && StrMap.mem name idenv then
@@ -406,16 +481,20 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       else
         let v = MVariable.create Immut (Some name) in
         print_visible ~debug:opts.debug `DotC visible v ty;
+        report name (Typed { header = `DotC ; var = v ; tys = ty }) ;
         (StrMap.add name v idenv, Env.add v ty env, decl)
     with Failure msg ->
       if visible then
         Format.printf "%s:@.untypeable: %s@." name msg;
+      report name (Untypeable { title = msg ; descr = None }) ;
       (idenv, env, decl))
   | _, (PAst.Fundef (ret_ty, name, params, _) as e) when simple_c_fun && C_interface.is_simple_c_function e ->
     let ty = C_interface.infer_cfun ~typedef_map:decl ret_ty params |> GTy.mk |>  TyScheme.mk_mono in
     if has_ty_binding name then begin
       (match find_existing_binding name idenv env with
-       | Some (v, tys) -> print_visible ~debug:opts.debug `SimpleC visible v tys
+       | Some (v, tys) ->
+           print_visible ~debug:opts.debug `SimpleC visible v tys ;
+           report name (Typed { header = `SimpleC ; var = v ; tys })
        | None -> ());
       (idenv, env, decl)
     end else if is_declaration past && StrMap.mem name idenv then
@@ -423,11 +502,14 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
     else
       let v = MVariable.create Immut (Some name) in
       print_visible ~debug:opts.debug `SimpleC visible v ty;
+      report name (Typed { header = `SimpleC ; var = v ; tys = ty }) ;
       (StrMap.add name v idenv, Env.add v ty env, decl)
   | _, PAst.Fundef (ret_ty, name, params, _) when is_declaration past ->
     if has_ty_binding name then begin
       (match find_existing_binding name idenv env with
-       | Some (v, tys) -> print_visible ~debug:opts.debug `Default visible v tys
+       | Some (v, tys) ->
+           print_visible ~debug:opts.debug `Default visible v tys ;
+           report name (Typed { header = `Default ; var = v ; tys })
        | None -> ());
       (idenv, env, decl)
     end else if StrMap.mem name idenv then
@@ -436,10 +518,13 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       let ty = C_interface.infer_cfun ~typedef_map:decl ret_ty params |> GTy.mk |> TyScheme.mk_mono in
       let v = MVariable.create Immut (Some name) in
       print_visible ~debug:opts.debug `Default visible v ty;
+      report name (Typed { header = `Default ; var = v ; tys = ty }) ;
       (StrMap.add name v idenv, Env.add v ty env, decl)
   | _, PAst.Fundef (_, name, _, _) when has_ty_binding name ->
     (match find_existing_binding name idenv env with
-     | Some (v, tys) -> print_visible ~debug:opts.debug `Default visible v tys
+     | Some (v, tys) ->
+         print_visible ~debug:opts.debug `Default visible v tys ;
+         report name (Typed { header = `Default ; var = v ; tys })
      | None -> ());
     (idenv, env, decl)
   | _ ->
