@@ -16,5 +16,5 @@ make_pair: [any_sexp, any_sexp] -> lang
 
 get_type: [any_sexp] --> any_sexp
 
-reverse_strings: ([CHR] -> CHR) & ([CHR1] -> CHR1) & ([(clx | env | externalptr | lang | list | arrow) | null | sym] -> empty)
+reverse_strings: ∀'a. ([CHR] -> CHR) & ([CHR1 & v1('a)] -> "" | CHR1 & v1('a)) & ([(clx | env | externalptr | lang | list | arrow) | null | sym] -> empty)
 

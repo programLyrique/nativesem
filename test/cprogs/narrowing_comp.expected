@@ -12,7 +12,7 @@ C_escape_chars: [CHR] -> ()
 
 C_escape_chars_one: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 
-C_escape_chars2: ([CHR] -> CHR) & ([CHR1] -> CHR1)
+C_escape_chars2: ∀'a. ([CHR] -> CHR) & ([CHR1 & v1('a)] -> "" | CHR1 & v1('a))
 
 strstr: [c_string, c_string] --> c_string
 

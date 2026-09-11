@@ -1,6 +1,6 @@
-C_malloc_to_charptr: [c_int_na] -> p(CHR)
+C_malloc_to_charptr: [c_int_na] -> p(^CHR)
 
 get_buf: () --> c_string
 
-C_voidptr_keeps_precision: () -> p(CHR)
+C_voidptr_keeps_precision: () -> p(^CHR)
 

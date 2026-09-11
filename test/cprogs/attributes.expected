@@ -26,7 +26,7 @@ refined_class: [any_sexp] -> "myclass"
 
 refined_class_length: [any_sexp] -> c_true
 
-refined_class_first: [any_sexp] -> p(CHR)
+refined_class_first: [any_sexp] -> p("myclass")
 
 dim_roundtrip_constructed: [any_sexp] -> INT
 

@@ -777,11 +777,63 @@ let run_on_package opts path idenv env =
   run_on_files opts c_files ~entry_points idenv env
   
 (* Solutions produced by tallying may assign a type variable a primitive
-   component that is not "whole" (e.g. [INT \ 42L]). Such a component cannot
-   appear as the element type of a non-scalar vector, so rstt widens/narrows it
-   back to a whole component -- dropping the solution when that is impossible.
-   Same hook as Rsem uses. *)
-let subst_normalization _ substs = substs |> List.filter_map Rstt.TyOp.normalize_subst
+   component that is not "whole" (e.g. [INT \ 42L]). Such a component cannot be
+   the element type of a *non-scalar* vector -- the record encoding of [v(...)]
+   is only sound for whole modes -- so rstt's [TyOp.normalize_subst] widens the
+   binding itself back to whole components. That also erases the content of a
+   bare CHARSXP, e.g. [mkChar("world") : p("world")] becomes [p(CHR)], where
+   nothing is at stake: a CHARSXP is not a vector. Rsem never meets the case
+   (there are no bare primitives at the R level); NativeSem meets it everywhere.
+
+   So the rule is applied per variable:
+   - a variable of the environment ([ctx.tvars]) may already sit under a
+     non-scalar vector elsewhere in the environment, out of sight: rstt's
+     conservative rule is kept for it;
+   - any other variable (an instantiation copy, the fresh result of an
+     application) only occurs in the type being instantiated and is consumed by
+     this very substitution, so what matters is what it is bound to: only the
+     non-scalar vectors *inside* that type need widening. *)
+
+(* Widen the element type of every non-scalar vector in [ty] to whole
+   components: positive atoms are enlarged, negative ones reduced (hence dropped
+   when that empties them). Scalars and bare primitives are left alone. The
+   result is a supertype of [ty] that satisfies rstt's vector invariant. *)
+let enlarge_vector_contents ty =
+  let open Sstt in
+  let fix_vec_comp c =
+    if not (Tag.equal (TagComp.tag c) Rstt.Vec.tag) then c
+    else
+      let ty = Tags.mk_comp c |> Descr.mk_tags |> Ty.mk_descr in
+      let pos = function
+        | Rstt.Vec.Vector c -> Rstt.Vec.Vector (Rstt.Prim.enlarge c)
+        | Rstt.Vec.Scalar _ as a -> a in
+      let neg = function
+        | Rstt.Vec.Vector c -> Rstt.Vec.Vector (Rstt.Prim.reduce c)
+        | Rstt.Vec.Scalar _ as a -> a in
+      Rstt.Vec.destruct ty
+      |> List.map (fun (p, ns) -> Rstt.Vec.mk_line (pos p, List.map neg ns))
+      |> Ty.disj |> Ty.get_descr |> Descr.get_tags |> Tags.get Rstt.Vec.tag
+  in
+  let fix_descr d =
+    let b, comps = Descr.destruct d in
+    let comps = comps |> List.map (function
+      | Descr.Tags t ->
+        let b, cs = Tags.destruct t in
+        Descr.Tags (Tags.construct (b, List.map fix_vec_comp cs))
+      | c -> c) in
+    Descr.construct (b, comps)
+  in
+  Transform.transform (VDescr.map fix_descr) ty
+
+let subst_normalization (ctx : Mlsem_system.Heuristics.tally_context) substs =
+  substs |> List.filter_map (fun s ->
+    let env_part = Subst.restrict ctx.tvars s in
+    match Rstt.TyOp.normalize_subst env_part with
+    | None -> None
+    | Some env_part ->
+      let fresh_part =
+        Subst.remove_many ctx.tvars s |> Subst.map1 enlarge_vector_contents in
+      Some (Subst.combine env_part fresh_part))
 
 let () =
   (* rstt registers its own printers for [Prim], [Vec], [Lst], ... at module

@@ -1,6 +1,6 @@
 create_str_from_c_string: () -> "hello"
 
-create_str_from_chr: () -> CHR1
+create_str_from_chr: () -> "world"
 
 create_str_from_concat: () -> "hello world"
 
@@ -8,7 +8,7 @@ get_c_string_from_str: ([CHR] -> c_string | c_null) & ([CHR1] -> c_string) & ([c
 
 is_blank_string: ([null] -> c_true) & ([null | p(CHR)] -> c_bool)
 
-to_char: ∀'a. ([p(CHR) & 'a] -> 'a) & (['a & ((env | externalptr | lang | list | vec | arrow) | null | sym)] -> p(CHR))
+to_char: ∀'a. ([p(CHR) & 'a] -> 'a) & (['a & ((env | externalptr | lang | list | arrow) | null)] -> na_string) & (['a & ((env | externalptr | lang | list | vec | arrow) | null | sym)] -> p(CHR))
 
 make_url_names: () -> CHR
 
