@@ -1,6 +1,6 @@
-set_fp: t(() --> c_void) -> ()
+set_fp: [() --> c_void] -> ()
 
-set_fp_init: t(() --> c_void) -> ()
+set_fp_init: [() --> c_void] -> ()
 
-set_fp_ret_ptr: t(() --> *c_int_na) -> ()
+set_fp_ret_ptr: [() --> *c_int_na] -> ()
 

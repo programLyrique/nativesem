@@ -16,14 +16,37 @@ let any_sexp = Rstt.(Ty.disj [Prim.(Chr.any |> mk); Attr.any; Null.any; Sym.any;
 
 let any_c = Ty.disj [Cint.any; Cenums.char; Cenums.double; Cptr.any]
 
+(* ===== Character vectors of statically-known strings =====
+
+   rstt's vector constructor only lets a *scalar* ([Vec.Scalar], i.e. [v1(...)])
+   carry a refined element type: a non-scalar [Vec.Vector] must be given a
+   "whole" primitive component (a full [CHR] / [INT] / ... , see
+   [Rstt.Prim.is_whole]), because a vector of unknown length cannot soundly
+   claim every one of its elements is one specific string. Vector lengths are no
+   longer part of the type algebra, so the length-N vector of class/name
+   singletons the previous version built ([v[N]("a" | "b")]) has no counterpart:
+   we keep the precise type only in the length-1 case and widen to [v(CHR)]
+   otherwise. *)
+let chr_vec = Rstt.(Vec.mk (Vec.Vector (Prim.mk Prim.Chr.any)))
+
+(* The character vector holding exactly the strings [names] when that is
+   expressible, i.e. when [names] is a single string; [v(CHR)] otherwise.
+   [Chr.str'] and not [Chr.str]: primitive domains include NA by default in the
+   current rstt, and a recovered class/element name is never NA. *)
+let chr_vec_of_names names =
+  let open Rstt in
+  match names with
+  | [ name ] -> Vec.mk (Vec.Scalar (Prim.mk (Prim.Chr.str' name)))
+  | _ -> chr_vec
+
 let exprsxp = Rstt.Builder.(
-  build TIdMap.empty (TList {bindings=[] ; sym=[] ; tl=TOption (TCup (TLang, TSym))})
+  build TIdMap.empty (TList {bindings=[] ; tl=TOption (TCup (TLang, TSym))})
 )
 
 (* Special type constructors for lists*)
 let allocVector_vecsxp_ty n =
   let open Rstt.Builder in 
-  let builder = TList ({ bindings = List.init n (fun i -> ("_" ^ (string_of_int i), TNull)) ; sym = [] ; tl = TOption TEmpty }) in
+  let builder = TList ({ bindings = List.init n (fun i -> ("_" ^ (string_of_int i), TNull)) ; tl = TOption TEmpty }) in
   build TIdMap.empty builder
 
 let mkNamed_vecsxp_ty names = 
@@ -31,7 +54,6 @@ let mkNamed_vecsxp_ty names =
   let builder =
     TList
       { bindings = List.map (fun name -> (name, TAny)) names;
-        sym = [];
         tl = TOption TEmpty }
   in 
   build TIdMap.empty builder
@@ -41,11 +63,11 @@ let set_vector_elt_ty name =
   let open Rstt.Builder in
   let _, r' = rvar empty_env "r" in
   let _, a = tvar empty_env "a" in
-  (* t({;`r}, 'a) -> {name: 'a; `r} ; actually, maybe 'a & any_sexp for the 1st argument... *)
+  (* [{ `r }, 'a] -> {name: 'a, `r} ; actually, maybe 'a & any_sexp for the 1st argument... *)
   let builder =
     TArrow
-      ( TTuple [TList {bindings = []; sym = []; tl = TRowVar r'}; TVar a],
-        TList ({bindings = [(name, TVar a)]; sym = []; tl = TRowVar r'}) )
+      ( TTuple [TList {bindings = []; tl = TRowVar r'}; TVar a],
+        TList ({bindings = [(name, TVar a)]; tl = TRowVar r'}) )
   in
   build TIdMap.empty builder
 
@@ -55,24 +77,20 @@ let getAttrib_class_pdom _result_ty = any_sexp
 (* Type of [getAttrib(v, R_ClassSymbol)] given v's inferred type. The class
    attribute is a chr vector listing v's classes. When v's [classes]
    component (from its [attr(content, classes)] encoding) is a concrete,
-   positive list we refine to [v[N](class-name singletons)]; otherwise we
-   fall back to [v(chr)]. The result is [Attr.mk_content]-wrapped to match
-   the encoding R values use in [.ty] (Builder.build does this implicitly
-   for Vec; we have to be explicit here). *)
+   positive list we refine to that list of names (only expressible when there is
+   a single class, see [chr_vec_of_names]); otherwise we fall back to [v(CHR)].
+   The result is [Attr.mk_content]-wrapped to match the encoding R values use in
+   [.ty] (Builder.build does this implicitly for Vec; we have to be explicit
+   here). *)
 let getAttrib_class_ty v_ty =
   let open Rstt in
-  let fallback =
-    Attr.mk_content (Vec.mk (Vec.AnyLength (Prim.mk Prim.Chr.any)))
-  in
+  let fallback = Attr.mk_content chr_vec in
   try
     let classes_ty = Attr.proj_classes v_ty in
     match Classes.destruct classes_ty with
     | { pos; neg = []; unk = []; tail = NoOther } when pos <> [] ->
       let names = List.map (fun (Classes.L (s, _)) -> s) pos in
-      let elem_ty =
-        names |> List.map Prim.Chr.str |> Ty.disj |> Prim.mk
-      in
-      Attr.mk_content (Vec.mk (Vec.CstLength (List.length names, elem_ty)))
+      Attr.mk_content (chr_vec_of_names names)
     | _ -> fallback
   with _ -> fallback
 
@@ -83,12 +101,12 @@ let getAttrib_class_ty v_ty =
    class set; [AllOthers] would be wrong as it asserts every other class is
    present, a near-empty type). mlsem's occurrence typing then refines [x] in
    both branches: the then-branch to [x & <name, ...>], the else-branch to
-   [x \ <name, ...>] (which keeps e.g. the [p(chr)] CHARSXP half of [any_sexp],
+   [x \ <name, ...>] (which keeps e.g. the [p(CHR)] CHARSXP half of [any_sexp],
    soundly: a CHARSXP carries no class so the test is false for it).
 
    Testing [x] directly (rather than projecting its class component) keeps the
    type-case total over all SEXPs -- a projection would be partial (undefined on
-   the classless [p(chr)]), making [inherits] on a possibly-CHARSXP value
+   the classless [p(CHR)]), making [inherits] on a possibly-CHARSXP value
    untypeable. *)
 let inherits_test_ty name =
   let open Rstt in
@@ -104,14 +122,14 @@ let inherits_test_ty name =
 
    [setAttrib_class_classes] derives the class component from [val]'s type. When
    [val] is a chr vector whose element type is a positive, finite set of string
-   singletons (e.g. [mkString "foo"], typed [t(c_string('a)) -> v[1](chr('a))]
+   singletons (e.g. [mkString "foo"], typed [(c_string('a)) --> v1(^CHR('a))]
    in base.ty, or a variable holding such a value — the type flows through let
    bindings) we set exactly those classes ([tail = NoOther]). Otherwise the
    concrete names are unknown and we fall back to [Classes.any], i.e. arbitrary
-   classes. The [allocVector(STRSXP,n)] + [SET_STRING_ELT] build-up idiom also
-   lands here: [allocVector] seeds elements to "" and [SET_STRING_ELT] unions in
-   each assigned string (see base.ty), so the element type is the set of strings
-   written, plus "".
+   classes. Only a *scalar* vector can carry string singletons in the current
+   type algebra, so in practice this recovers the single-class case; the
+   multi-class [allocVector(STRSXP,n)] + [SET_STRING_ELT] build-up is recovered
+   by the const-propagation path instead ([setAttrib_class_cons_known]).
 
    The empty string is dropped from the recovered names: it is the STRSXP
    allocation default ("") standing in for any slot not provably overwritten, not
@@ -127,9 +145,9 @@ let setAttrib_class_classes val_ty =
       match Vec.destruct content with
       | [ (atom, []) ] ->
         let elem = match atom with
-          | Vec.AnyLength e | Vec.CstLength (_, e) | Vec.VarLength (_, e) -> e
+          | Vec.Vector e | Vec.Scalar e -> e
         in
-        (* [Prim.Chr.destruct] now returns [(has_na, prim_line list)] (rstt's
+        (* [Prim.Chr.destruct] returns [(has_na, atomic_line list)] (rstt's
            NA-by-default refactor). A concrete, positive, finite set of string
            singletons is a single line with [pos=true] and no type variables;
            the [content] strings are its class names. *)
@@ -212,12 +230,12 @@ let attr_tail_label = "\000__attr_tail__"
    carrying just this label when the Lst can't be destructured. *)
 let lst_set_label attrs_ty name val_ty =
   let open Rstt in
-  let fresh () = Lst.mk { bindings = [ (name, mk_field val_ty) ]; sym = []; tl = Ty.F.any } in
+  let fresh () = Lst.mk { bindings = [ (name, mk_field val_ty) ]; tl = Ty.F.any } in
   try
     match Lst.destruct attrs_ty with
     | [ (atom :: _, []) ] ->
       let bindings = (name, mk_field val_ty) :: List.remove_assoc name atom.Lst.bindings in
-      Lst.mk { bindings; sym = atom.Lst.sym; tl = atom.Lst.tl }
+      Lst.mk { bindings; tl = atom.Lst.tl }
     | _ -> fresh ()
   with _ -> fresh ()
 
@@ -229,7 +247,7 @@ let lst_widen_tail attrs_ty val_ty =
     match Lst.destruct attrs_ty with
     | [ (atom :: _, []) ] ->
       let tl = Ty.F.cup atom.Lst.tl (mk_field val_ty) in
-      Lst.mk { bindings = atom.Lst.bindings; sym = atom.Lst.sym; tl }
+      Lst.mk { bindings = atom.Lst.bindings; tl }
     | _ -> Lst.any
   with _ -> Lst.any
 
@@ -280,8 +298,8 @@ let getAttrib_attr_pdom _result_ty = any_sexp
    Used to bound getAttrib's result so e.g. getAttrib(x, R_DimSymbol) is an
    integer vector | NULL rather than any_sexp | NULL. [names] is deliberately
    absent (handled via the list-field-names model); [class] has its own field. *)
-let attr_int_vec = Rstt.(Attr.mk_content (Vec.mk (Vec.AnyLength (Prim.mk Prim.Int.any))))
-let attr_chr_vec = Rstt.(Attr.mk_content (Vec.mk (Vec.AnyLength (Prim.mk Prim.Chr.any))))
+let attr_int_vec = Rstt.(Attr.mk_content (Vec.mk (Vec.Vector (Prim.mk Prim.Int.any))))
+let attr_chr_vec = Rstt.(Attr.mk_content chr_vec)
 let attr_list = Rstt.(Attr.mk_content Lst.any)
 let special_attr_type = function
   | "dim" -> Some attr_int_vec                        (* INTSXP *)
@@ -313,11 +331,12 @@ let is_placeholder_label s =
 (* getAttrib(v, R_NamesSymbol): names live in the content list's field labels
    (set by mkNamed/SET_VECTOR_ELT), so read them back as a names vector rather
    than from the attrs field. A list with real labels yields exactly those names
-   as string singletons (no "" build-up artifact, unlike a STRSXP read); a
-   positional placeholder-only list (_0, _1, ... from allocVector(VECSXP,n)) is
-   unnamed -> NULL; a non-list / unknown value falls back to chr vector | NULL
-   (a names attribute is always a character vector or NULL). "" is a valid R name
-   (an unnamed element) and is kept. *)
+   as string singletons when that is expressible -- i.e. for a one-element list,
+   see [chr_vec_of_names] -- and [v(CHR)] otherwise; a positional
+   placeholder-only list (_0, _1, ... from allocVector(VECSXP,n)) is unnamed ->
+   NULL; a non-list / unknown value falls back to chr vector | NULL (a names
+   attribute is always a character vector or NULL). "" is a valid R name (an
+   unnamed element) and is kept. *)
 let getAttrib_names_ty v_ty =
   let open Rstt in
   let fallback = Ty.cup attr_chr_vec Null.any in
@@ -330,9 +349,7 @@ let getAttrib_names_ty v_ty =
     in
     if labels = [] then fallback
     else if List.for_all is_placeholder_label labels then Null.any
-    else
-      let elem = labels |> List.map Prim.Chr.str |> Ty.disj |> Prim.mk in
-      Attr.mk_content (Vec.mk (Vec.CstLength (List.length labels, elem)))
+    else Attr.mk_content (chr_vec_of_names labels)
   with _ -> fallback
 
 (* getAttrib(v, sym) for a dynamic attribute name: the union of all of v's
@@ -406,7 +423,7 @@ let relabel_list content names =
     match Lst.destruct content with
     | [ (atom :: _, []) ] when List.length atom.Lst.bindings = List.length names ->
       let bindings = List.map2 (fun (_, f) name -> (name, f)) atom.Lst.bindings names in
-      Lst.mk { bindings; sym = atom.Lst.sym; tl = atom.Lst.tl }
+      Lst.mk { bindings; tl = atom.Lst.tl }
     | _ -> content
   with _ -> content
 

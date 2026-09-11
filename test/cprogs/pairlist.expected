@@ -1,2 +1,2 @@
-reflist_add: t(lang, any_sexp) -> lang
+reflist_add: [lang, any_sexp] -> lang
 

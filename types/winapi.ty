@@ -1,9 +1,9 @@
 // Win32 API
-FormatMessage: (t(any, any, any, any, any, any) --> c_int) & (t(any, any, any, any, any, any, any) --> c_int)
-GetCurrentProcess: () --> c_ptr
-GetWindowThreadProcessId: t(any, any) --> c_int
-IsProcessInJob: t(any, any, any) --> c_int
-MultiByteToWideChar: t(any, any, any, any, any, any) --> c_int
-OpenProcess: t(any, any, any) --> c_ptr
-PeekNamedPipe: t(any, any, any, any, any, any) --> c_int
-ReadFile: t(any, any, any, any, any) --> c_int
+FormatMessage: ([any, any, any, any, any, any] --> c_int) & ([any, any, any, any, any, any, any] --> c_int)
+GetCurrentProcess: [] --> c_ptr
+GetWindowThreadProcessId: [any, any] --> c_int
+IsProcessInJob: [any, any, any] --> c_int
+MultiByteToWideChar: [any, any, any, any, any, any] --> c_int
+OpenProcess: [any, any, any] --> c_ptr
+PeekNamedPipe: [any, any, any, any, any, any] --> c_int
+ReadFile: [any, any, any, any, any] --> c_int

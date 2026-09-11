@@ -1,2 +1,2 @@
-mk_value: t(env) | t(int) -> int1
+mk_value: [INT] | [env] -> INT1
 

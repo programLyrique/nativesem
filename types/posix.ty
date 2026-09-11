@@ -25,71 +25,71 @@ POLLHUP: c_int
 _SC_OPEN_MAX: c_int
 
 // POSIX process functions
-fork: () --> c_int
-waitpid: t(any, any, any) --> c_int
-kill: t(any, any) --> c_int
-raise: t(any) --> c_int
-execvp: t(any, any) --> c_int
-pipe: t(any) --> c_int
-usleep: t(any) --> c_int
-sysconf: t(any) --> c_int
+fork: [] --> c_int
+waitpid: [any, any, any] --> c_int
+kill: [any, any] --> c_int
+raise: [any] --> c_int
+execvp: [any, any] --> c_int
+pipe: [any] --> c_int
+usleep: [any] --> c_int
+sysconf: [any] --> c_int
 
 // POSIX file descriptor functions
-open: (t(any, any) --> c_int) & (t(any, any, any) --> c_int)
-close: t(any) --> c_int
-read: t(any, any, any) --> c_int
-write: t(any, any, any) --> c_int
-dup2: t(any, any) --> c_int
-fcntl: (t(any, any) --> c_int) & (t(any, any, any) --> c_int)
-poll: t(any, any, any) --> c_int
+open: ([any, any] --> c_int) & ([any, any, any] --> c_int)
+close: [any] --> c_int
+read: [any, any, any] --> c_int
+write: [any, any, any] --> c_int
+dup2: [any, any] --> c_int
+fcntl: ([any, any] --> c_int) & ([any, any, any] --> c_int)
+poll: [any, any, any] --> c_int
 
 // POSIX signal functions
-sigemptyset: t(any) --> c_int
-sigaddset: t(any, any) --> c_int
-sigprocmask: t(any, any, any) --> c_int
-signal: t(any, any) --> any
+sigemptyset: [any] --> c_int
+sigaddset: [any, any] --> c_int
+sigprocmask: [any, any, any] --> c_int
+signal: [any, any] --> any
 
 // POSIX wait status macros
-WIFEXITED: t(any) --> c_bool
-WEXITSTATUS: t(any) --> c_int
-WTERMSIG: t(any) --> c_int
+WIFEXITED: [any] --> c_bool
+WEXITSTATUS: [any] --> c_int
+WTERMSIG: [any] --> c_int
 
 // POSIX string functions
-strerror: t(any) --> c_string
-strsignal: t(any) --> c_string
-strdup: t(any) --> c_string
+strerror: [any] --> c_string
+strsignal: [any] --> c_string
+strdup: [any] --> c_string
 
 // POSIX stdio
 stdin: c_ptr
 stdout: c_ptr
 stderr: c_ptr
-fdopen: t(any, any) --> any
-fprintf: (t(any, any) --> c_int) & (t(any, any, any) --> c_int) & (t(any, any, any, any) --> c_int)
-fclose: t(any) --> c_int
-fopen: t(any, any) --> any
-fflush: t(any) --> c_int
-fwrite: t(any, any, any, any) --> c_int
+fdopen: [any, any] --> any
+fprintf: ([any, any] --> c_int) & ([any, any, any] --> c_int) & ([any, any, any, any] --> c_int)
+fclose: [any] --> c_int
+fopen: [any, any] --> any
+fflush: [any] --> c_int
+fwrite: [any, any, any, any] --> c_int
 // snprintf is variadic; enumerate common arities (buf, size, fmt[, args...])
-snprintf: (t(any, any, any) --> c_int) & (t(any, any, any, any) --> c_int) & (t(any, any, any, any, any) --> c_int) & (t(any, any, any, any, any, any) --> c_int)
+snprintf: ([any, any, any] --> c_int) & ([any, any, any, any] --> c_int) & ([any, any, any, any, any] --> c_int) & ([any, any, any, any, any, any] --> c_int)
 
 // POSIX misc
 // NB: errno is intentionally *not* declared here. It is a mutable lvalue
 // (code does [errno = 0]), but a .ty binding is immutable, so installing it
 // would make every [errno = ...] crash with "Cannot assign to an immutable
 // variable". Left undeclared, it falls back to a fresh mutable variable.
-gettimeofday: t(any, any) --> c_int
-setpgid: t(any, any) --> c_int
-prctl: t(any, any) --> c_int
+gettimeofday: [any, any] --> c_int
+setpgid: [any, any] --> c_int
+prctl: [any, any] --> c_int
 
 // C stdlib memory management
 // c_int_na and not c_int because we currently type int arg of functions as c_int_na. 
-malloc: t(c_int_na) --> c_ptr
-calloc: t(c_int_na, c_int_na) --> c_ptr
-realloc: t(c_ptr, c_int_na) --> c_ptr
-free: t(c_ptr) --> c_void
+malloc: [c_int_na] --> c_ptr
+calloc: [c_int_na, c_int_na] --> c_ptr
+realloc: [c_ptr, c_int_na] --> c_ptr
+free: [c_ptr] --> c_void
 
 // C stdlib time
-time: t(any) --> c_int
+time: [any] --> c_int
 
 // C stdlib limits/float constants
 INT_MAX: c_int
@@ -99,21 +99,21 @@ DBL_MIN: c_double
 
 
 // C stdlib string
-strlen: t(c_string) --> c_int
-strcmp: t(c_string, c_string) --> c_int // TODO: we should make it work on string singletons also, to be able to check for equality at least
-strncmp: t(c_string, c_string, any) --> c_int
-strcpy: t(any, any) --> c_string
+strlen: [c_string] --> c_int
+strcmp: [c_string, c_string] --> c_int // TODO: we should make it work on string singletons also, to be able to check for equality at least
+strncmp: [c_string, c_string, any] --> c_int
+strcpy: [any, any] --> c_string
 
 // C stdlib math
-fmin: t(c_double, c_double) --> c_double
+fmin: [c_double, c_double] --> c_double
 
 // POSIX sockets / netdb
-__SOCKADDR_COMMON: t(any) --> c_void
-socket: t(any, any, any) --> c_int
-bind: t(any, any, any) --> c_int
-getaddrinfo: t(any, any, any, any) --> c_int
-freeaddrinfo: t(any) --> c_void
-htonl: t(any) --> c_int
-htons: t(any) --> c_int
-FD_ZERO: t(any) --> c_void
+__SOCKADDR_COMMON: [any] --> c_void
+socket: [any, any, any] --> c_int
+bind: [any, any, any] --> c_int
+getaddrinfo: [any, any, any, any] --> c_int
+freeaddrinfo: [any] --> c_void
+htonl: [any] --> c_int
+htons: [any] --> c_int
+FD_ZERO: [any] --> c_void
 INADDR_ANY: c_int

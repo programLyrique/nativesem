@@ -3,21 +3,29 @@
 # This script sets up paths to the tree-sitter installation from r-parser
 #
 # Usage: source setup-env.sh
+#        R_PARSER_PATH=/path/to/r-parser source setup-env.sh
 #
-# You must modify R_PARSER_PATH to point to your r-parser installation
+# By default r-parser is expected next to this repository (../r-parser); set
+# R_PARSER_PATH in the environment to point somewhere else.
 
 # ============================================================================
-# CONFIGURATION - UPDATE THIS PATH TO YOUR r-parser INSTALLATION
+# CONFIGURATION - r-parser LOCATION
 # ============================================================================
-R_PARSER_PATH="/home/pierre/Documents/RLanguage/types-for-R/r-parser"  # <-- UPDATE THIS PATH
+# Directory holding this script, so the default works whatever the caller's cwd.
+SETUP_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+R_PARSER_PATH="${R_PARSER_PATH:-${SETUP_ENV_DIR}/../r-parser}"
 
 # Check if r-parser exists at the configured path
 if [ ! -d "$R_PARSER_PATH" ]; then
     echo "ERROR: r-parser directory not found at: $R_PARSER_PATH"
-    echo "Please update R_PARSER_PATH in setup-env.sh to point to your r-parser installation"
+    echo "Set R_PARSER_PATH to your r-parser installation, or clone it next to"
+    echo "this repository (as ${SETUP_ENV_DIR}/../r-parser)"
     echo "You can get r-parser from: https://github.com/E-Sh4rk/r-parser"
     return 1 2>/dev/null || exit 1
 fi
+
+# Resolve to an absolute, symlink-free path (the checks above guarantee it exists).
+R_PARSER_PATH="$(cd "$R_PARSER_PATH" && pwd)"
 
 # ============================================================================
 # ENVIRONMENT SETUP

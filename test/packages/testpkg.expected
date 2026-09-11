@@ -8,13 +8,13 @@ Entry points for .C convention:
   add_ints
   sum_doubles
 
-.C(add_ints): t(int | lgl, int | lgl, int | lgl) --> c_void
+.C(add_ints): [INT | LGL, INT | LGL, INT | LGL] --> c_void
 
-.C(sum_doubles): t(dbl, int | lgl, dbl) --> c_void
+.C(sum_doubles): [DBL, INT | LGL, DBL] --> c_void
 
-make_pair: t(any_sexp, any_sexp) -> lang
+make_pair: [any_sexp, any_sexp] -> lang
 
-get_type: t(any_sexp) --> any_sexp
+get_type: [any_sexp] --> any_sexp
 
-reverse_strings: ∀'a,'b. t(v[^int('a)]("" | chr & 'b)) -> v[^int('a)]("" | chr & 'b)
+reverse_strings: ∀'a. ([CHR] -> CHR) & ([CHR1 & v1('a)] -> "" | CHR1 & v1('a)) & ([(clx | env | externalptr | lang | list | arrow) | null | sym] -> empty)
 

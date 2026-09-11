@@ -8,17 +8,17 @@ create_list_const_prop: () -> { _0: null, _1: null, _2: null, _3: null, _4: null
 
 create_list_const_prop2: () -> { _0: null, _1: null, _2: null, _3: null, _4: null, _5: null, _6: null }
 
-create_named_list_with_elems: () -> { a: dbl1, b: dbl1 }
+create_named_list_with_elems: () -> { a: DBL1, b: DBL1 }
 
-create_named_list_with_int: () -> { a: 3, b: 6 }
+create_named_list_with_int: () -> { a: 3L, b: 6L }
 
-create_named_list_set_only_one: () -> { a: 3, b: any }
+create_named_list_set_only_one: () -> { a: 3L, b: any }
 
-set_noname_list: ∀'a. t(any_sexp & 'a) -> { null | 'a }
+set_noname_list: ∀'a. [any_sexp & 'a] -> { null | 'a }
 
-set_protected_noname_list: ∀'a. t(any_sexp & 'a) -> { null | 'a }
+set_protected_noname_list: ∀'a. [any_sexp & 'a] -> { null | 'a }
 
-read_in_list: () -> 3 | null
+read_in_list: () -> 3L | null
 
 create_pos_list_rf: () -> { _0: null, _1: null, _2: null }
 

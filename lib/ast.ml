@@ -391,7 +391,7 @@ let rec aux_e (eid, _decl, vars, e) =
         let ty = Defs.mkNamed_vecsxp_ty names in
         A.Value (GTy.mk ty)
     (* getAttrib(v, sym): route by the attribute the symbol denotes.
-       - Class: dedicated projection refining to v[N](class-name singletons)
+       - Class: dedicated projection refining to the class-name vector
          when v's classes are concretely known (see [Defs.getAttrib_class_ty]).
        - Named name: project that label of v's attrs (value | NULL).
        - Dynamic: project the union of all of v's attributes (value | NULL).
@@ -554,7 +554,7 @@ let rec aux_e (eid, _decl, vars, e) =
       in
       let body = List.fold_left add_let (aux_e body) (List.combine (List.map snd params) arg_types) in
       (* Suggested type decomposition, domain, type variable, body*)
-      let lambda = A.Lambda ([], GTy.mk @@ Tuple.mk arg_types, 
+      let lambda = A.Lambda ([], Some (GTy.mk @@ Tuple.mk arg_types), 
         MVariable.create Immut None, body) in
         (* we could give a more precise type for the attributes: noclass But then it displays <> after the closures, which is
           too much noise! *)

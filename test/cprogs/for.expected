@@ -1,2 +1,2 @@
-sum_all: t(dbl) -> dbl1
+sum_all: [DBL] -> DBL1
 

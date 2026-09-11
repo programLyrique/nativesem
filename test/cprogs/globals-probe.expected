@@ -18,7 +18,7 @@ use_stat_sexp: () -> any_sexp
 
 use_stat_int_7: () -> c_int_na
 
-use_def_arr: t(c_int_na) -> c_int_na
+use_def_arr: [c_int_na] -> c_int_na
 
 use_def_pt_x: () -> c_int_na
 
@@ -26,7 +26,7 @@ use_ext_sexp_A: () -> any_sexp
 
 use_ext_sexp_B: () -> any_sexp
 
-set_def_int: t(c_int_na) -> ()
+set_def_int: [c_int_na] -> ()
 
 get_def_int: () -> c_int_na
 

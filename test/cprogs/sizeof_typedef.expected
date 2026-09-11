@@ -1,2 +1,2 @@
-ap_create: t(c_int_na) -> *{ n : c_int_na ; c : *c_double }
+ap_create: [c_int_na] -> *{ n : c_int_na ; c : *c_double }
 

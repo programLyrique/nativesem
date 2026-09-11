@@ -20,12 +20,21 @@ You can install the OCaml libraries using `opam`.
 ## Tree sitter
 
 You need to compile and install `https://github.com/E-Sh4rk/r-parser`.
-Set the following environment variables:
+
+`setup-env.sh` (which the `Makefile` sources for you) derives the tree-sitter
+paths from it. By default it looks for r-parser next to this repository, at
+`../r-parser`; set `R_PARSER_PATH` if it lives elsewhere:
 
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/.../r-parser/core/tree-sitter/lib/
-export TREESITTER_INCDIR=/.../r-parser/core/tree-sitter/include/
-export TREESITTER_LIBDIR=/.../r-parser/core/tree-sitter/lib/
+R_PARSER_PATH=/path/to/r-parser source setup-env.sh
+```
+
+It exports the three variables the build needs:
+
+```bash
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$R_PARSER_PATH/core/tree-sitter/lib
+export TREESITTER_INCDIR=$R_PARSER_PATH/core/tree-sitter/include
+export TREESITTER_LIBDIR=$R_PARSER_PATH/core/tree-sitter/lib
 ```
 
 ## Common commands
@@ -118,9 +127,20 @@ Builtin and external signatures are currently described in both `types/base.ty` 
 
 The rstt syntax supports, among others:
 
-- Vectors: `v[length](element_type)`
+- Vectors: `v(element_type)` for any length, `v1(element_type)` for a scalar.
+  Vector lengths are not part of the type algebra, and only a scalar may carry a
+  refined element type (a string/number singleton, an `^` NA-free component);
+  the element type of a non-scalar vector has to be a whole mode.
+- Element modes: `INT`, `DBL`, `LGL`, `CHR`, `CLX`, `RAW` denote one mode
+  exactly, while the lowercase spellings (`int`, `dbl`, ...) additionally
+  include every mode that coerces up to it — so `p(chr)` is all of `prim`,
+  and a CHARSXP is `p(CHR)`.
+- Tuples: `[t1, t2]` — this is how the arguments of a C function are passed
+  (written `t(t1, t2)` in older versions of the syntax).
 - Lists with typed tails: `{label:type; tail}`
 - Intersections and unions: `t1 & t2`, `t1 | t2`
+
+See the header comment of `types/base.ty` for more on these conventions.
 
 ## Type precedence
 

@@ -80,11 +80,11 @@ let dotC_typeof typedef_map ct =
   let open Rstt in
   match ct with
   (* TODO: add also Rcomplex* *)
-  | Ptr Int -> Ty.cup (Vec.AnyLength (Prim.mk Prim.Int.any) |> Vec.mk |> Attr.mk_content)
-    (Vec.AnyLength (Prim.mk Prim.Lgl.any) |> Vec.mk |> Attr.mk_content) (* We allow logical vectors as well since they can be coerced to int *)
-  | Ptr Float -> Vec.AnyLength (Prim.mk Prim.Dbl.any) |> Vec.mk |> Attr.mk_content
-  | Ptr Ptr Char -> Vec.AnyLength (Prim.mk Prim.Chr.any) |> Vec.mk |> Attr.mk_content
-  | Ptr Char -> Vec.AnyLength (Prim.mk Prim.Raw.any) |> Vec.mk |> Attr.mk_content (* Actually unsigned char* *)
+  | Ptr Int -> Ty.cup (Vec.Vector (Prim.mk Prim.Int.any) |> Vec.mk |> Attr.mk_content)
+    (Vec.Vector (Prim.mk Prim.Lgl.any) |> Vec.mk |> Attr.mk_content) (* We allow logical vectors as well since they can be coerced to int *)
+  | Ptr Float -> Vec.Vector (Prim.mk Prim.Dbl.any) |> Vec.mk |> Attr.mk_content
+  | Ptr Ptr Char -> Vec.Vector (Prim.mk Prim.Chr.any) |> Vec.mk |> Attr.mk_content
+  | Ptr Char -> Vec.Vector (Prim.mk Prim.Raw.any) |> Vec.mk |> Attr.mk_content (* Actually unsigned char* *)
   | _ -> failwith (Printf.sprintf "Unsupported type for .C interface: %s. Only init*, double*, char** and unsigned char* are supported." (Ast.show_ctype ct))
 
 
@@ -142,11 +142,11 @@ let%test "infer_dotC infers supported .C parameters from a PAst function" =
     Arrow.mk
       (Tuple.mk
          [ Ty.cup
-             (Vec.AnyLength (Prim.mk Prim.Int.any) |> Vec.mk |> Attr.mk_content)
-             (Vec.AnyLength (Prim.mk Prim.Lgl.any) |> Vec.mk |> Attr.mk_content);
-           Vec.AnyLength (Prim.mk Prim.Dbl.any) |> Vec.mk |> Attr.mk_content;
-           Vec.AnyLength (Prim.mk Prim.Chr.any) |> Vec.mk |> Attr.mk_content;
-           Vec.AnyLength (Prim.mk Prim.Raw.any) |> Vec.mk |> Attr.mk_content ])
+             (Vec.Vector (Prim.mk Prim.Int.any) |> Vec.mk |> Attr.mk_content)
+             (Vec.Vector (Prim.mk Prim.Lgl.any) |> Vec.mk |> Attr.mk_content);
+           Vec.Vector (Prim.mk Prim.Dbl.any) |> Vec.mk |> Attr.mk_content;
+           Vec.Vector (Prim.mk Prim.Chr.any) |> Vec.mk |> Attr.mk_content;
+           Vec.Vector (Prim.mk Prim.Raw.any) |> Vec.mk |> Attr.mk_content ])
       Cenums.void
   in
   Ty.equiv (infer_dotC_from_past past) expected

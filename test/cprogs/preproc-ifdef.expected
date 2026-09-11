@@ -1,6 +1,6 @@
-selected_by_ifdef: ∀'a. t(any_sexp & 'a) -> any_sexp & 'a
+selected_by_ifdef: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 
-selected_by_ifndef: ∀'a. t(any_sexp & 'a) -> any_sexp & 'a
+selected_by_ifndef: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 
-selected_by_linux_define: ∀'a. t(any_sexp & 'a) -> any_sexp & 'a
+selected_by_linux_define: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 

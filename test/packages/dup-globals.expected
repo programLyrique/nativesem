@@ -5,7 +5,7 @@ Entry points for .Call convention:
 
 Entry points for .C convention:
 
-set_word_count: t(c_int_na) -> ()
+set_word_count: [c_int_na] -> ()
 
-set_edges: t(c_double) -> ()
+set_edges: [c_double] -> ()
 

@@ -1,22 +1,22 @@
 sizeof_type_pattern: () -> c_int
 
-sizeof_expr_pattern: t(c_int_na) -> c_int
+sizeof_expr_pattern: [c_int_na] -> c_int
 
-sized_decl_pattern: (t(c_int) -> c_int) & (t(c_int_na) -> c_int_na)
+sized_decl_pattern: ([c_int] -> c_int) & ([c_int_na] -> c_int_na)
 
-mixed_pattern: t(c_int_na, c_int_na) -> c_int_na
+mixed_pattern: [c_int_na, c_int_na] -> c_int_na
 
-sint_to_sexp: ∀'a. (t(c_int & c_int_na('a)) -> v1(^int('a))) & (t(c_int_na \ c_int | c_int_na & c_int_na('a)) -> v1(^int('a)) | v1(int \ ^int))
+sint_to_sexp: ∀'a. ([c_int & c_int_na('a)] -> ^INT1('a)) & ([c_int_na \ c_int | c_int_na & c_int_na('a)] -> INT1('a))
 
 nested_initializer_list: () -> c_int
 
-non_constant_initializer_list: t(c_int_na) -> c_int_na
+non_constant_initializer_list: [c_int_na] -> c_int_na
 
-declared_func: t(c_int_na, c_int_na) --> c_int_na
+declared_func: [c_int_na, c_int_na] --> c_int_na
 
-declared_ptr_func: t(c_int_na) --> *c_int_na
+declared_ptr_func: [c_int_na] --> *c_int_na
 
-declared_then_defined: t(c_int_na) --> c_int_na
+declared_then_defined: [c_int_na] --> c_int_na
 
-declared_then_defined: (t(c_int) -> c_int) & (t(c_int_na) -> c_int_na)
+declared_then_defined: ([c_int] -> c_int) & ([c_int_na] -> c_int_na)
 

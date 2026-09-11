@@ -1,10 +1,10 @@
-C_inherits_guard: ∀'a. (t(<myclass, ...> & 'a) -> <myclass, ...> & 'a) & (t('a & (<~myclass, ...> | null | p(chr) | sym)) -> null)
+C_inherits_guard: ∀'a. ([<myclass, ...> & 'a] -> <myclass, ...> & 'a) & (['a & (<~myclass, ...> | null | p(CHR) | sym)] -> null)
 
-C_inherits_ternary: ∀'a. (t(<myclass, ...> & 'a) -> <myclass, ...> & 'a) & (t('a & (<~myclass, ...> | null | p(chr) | sym)) -> null)
+C_inherits_ternary: ∀'a. ([<myclass, ...> & 'a] -> <myclass, ...> & 'a) & (['a & (<~myclass, ...> | null | p(CHR) | sym)] -> null)
 
-C_inherits_fixed: t(sym) -> <myclass, ...> | null
+C_inherits_fixed: [sym] -> <myclass, ...> | null
 
-C_inherits_not_guard: ∀'a. (t(<myclass, ...> & 'a) -> <myclass, ...> & 'a) & (t('a & (<~myclass, ...> | null | p(chr) | sym)) -> null)
+C_inherits_not_guard: ∀'a. ([<myclass, ...> & 'a] -> <myclass, ...> & 'a) & (['a & (<~myclass, ...> | null | p(CHR) | sym)] -> null)
 
-C_inherits_not_ternary: ∀'a. (t(<myclass, ...> & 'a) -> <myclass, ...> & 'a) & (t('a & (<~myclass, ...> | null | p(chr) | sym)) -> null)
+C_inherits_not_ternary: ∀'a. ([<myclass, ...> & 'a] -> <myclass, ...> & 'a) & (['a & (<~myclass, ...> | null | p(CHR) | sym)] -> null)
 

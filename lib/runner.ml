@@ -8,6 +8,14 @@ module StrSet = Set.Make(String)
 
 exception Inference_timeout of float
 
+(* [TyScheme.norm_and_simpl] was removed from mlsem when the normalization hook
+   it used became a separate configuration point (see the bottom of this file).
+   The rstt-specific simplification is now applied explicitly. *)
+let norm_and_simpl tys =
+  let vars, gty = TyScheme.get tys in
+  TyScheme.mk vars (GTy.map Rstt.TyOp.simplify gty)
+  |> TyScheme.simplify_factorize
+
 type cmd_options = {
   cst : bool;
   past : bool;
@@ -220,7 +228,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
           let renvs = System.Refinement.refinements env m in
           let reconstructed = System.Reconstruction.infer env renvs m in
           let typ = System.Checker.typeof_def env reconstructed m in
-          let tys = TyScheme.norm_and_simpl typ in
+          let tys = norm_and_simpl typ in
           let (vars, typ) = TyScheme.get tys in
           let typ = GTy.ub typ in
           (*Format.printf "%a: upper bound= %a@.@." Variable.pp v  Ty.pp typ ;*)
@@ -365,7 +373,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         (* For SEXP globals, install a gradual annotation [empty .. any_sexp]
            instead of pinning the type at [any_sexp]. The C declaration
            [extern SEXP foo] only constrains the upper bound (any SEXP);
-           which SEXP sub-family ([sym] / [env] / [lang] / [v(chr)] / ...)
+           which SEXP sub-family ([sym] / [env] / [lang] / [v(CHR)] / ...)
            a given read corresponds to is decided by the use-site, and
            gradual reads let the type checker refine accordingly. Without
            this, every read of e.g. [syms_x] returns the full [any_sexp]
@@ -485,12 +493,16 @@ let run_on_file opts filename idenv env =
   in
   (idenv, env)
 
-let run_on_files opts filenames ?entry_points idenv env =
-  (* Parse all the files to past. Diagnostic phase timers report each of the
-     three coarse stages (parse / non-Fundef setup / Fundef pass) on a
-     [Phase: …] line so the gap between wall-clock and the per-function
-     timings can be attributed. [r-typing/scripts/parse_output.R] filters
-     these as noise so they don't leak into the per-function CSV. *)
+(** Parse each file to a [PAst] program, paired with its file name. Split out
+    of [run_on_files] so a caller that has to parse the sources anyway (TypR)
+    can hand the result to [run_on_pasts] instead of parsing them twice.
+
+    Diagnostic phase timers report each of the three coarse stages (parse /
+    non-Fundef setup / Fundef pass) on a [Phase: …] line so the gap between
+    wall-clock and the per-function timings can be attributed.
+    [r-typing/scripts/parse_output.R] filters these as noise so they don't leak
+    into the per-function CSV. *)
+let parse_files opts filenames =
   let t_parse_start = Unix.gettimeofday () in
   let pasts = List.map (fun filename ->
       if not (Sys.file_exists filename) then
@@ -504,6 +516,11 @@ let run_on_files opts filenames ?entry_points idenv env =
     ) filenames in
   if opts.log_times then
     Format.printf "Phase: parsing %.3f s@." (Unix.gettimeofday () -. t_parse_start);
+  pasts
+
+(** Type the already-parsed translation units [pasts] (a [(filename, past)]
+    list, as returned by [parse_files]). *)
+let run_on_pasts opts pasts ?entry_points idenv env =
   let t_callgraph_start = Unix.gettimeofday () in
   let full_call_graph = Call_graph.of_past_list (List.map snd pasts) in
   let entry_names = match entry_points with
@@ -710,6 +727,9 @@ let run_on_files opts filenames ?entry_points idenv env =
       (Unix.gettimeofday () -. t_fundef_start);
   (idenv, env)
 
+let run_on_files opts filenames ?entry_points idenv env =
+  run_on_pasts opts (parse_files opts filenames) ?entry_points idenv env
+
 
 let run_on_package opts path idenv env =
   let entry_points = Package.find_native_calls path in
@@ -756,12 +776,68 @@ let run_on_package opts path idenv env =
   Format.printf "@.";
   run_on_files opts c_files ~entry_points idenv env
   
+(* Solutions produced by tallying may assign a type variable a primitive
+   component that is not "whole" (e.g. [INT \ 42L]). Such a component cannot be
+   the element type of a *non-scalar* vector -- the record encoding of [v(...)]
+   is only sound for whole modes -- so rstt's [TyOp.normalize_subst] widens the
+   binding itself back to whole components. That also erases the content of a
+   bare CHARSXP, e.g. [mkChar("world") : p("world")] becomes [p(CHR)], where
+   nothing is at stake: a CHARSXP is not a vector. Rsem never meets the case
+   (there are no bare primitives at the R level); NativeSem meets it everywhere.
+
+   So the rule is applied per variable:
+   - a variable of the environment ([ctx.tvars]) may already sit under a
+     non-scalar vector elsewhere in the environment, out of sight: rstt's
+     conservative rule is kept for it;
+   - any other variable (an instantiation copy, the fresh result of an
+     application) only occurs in the type being instantiated and is consumed by
+     this very substitution, so what matters is what it is bound to: only the
+     non-scalar vectors *inside* that type need widening. *)
+
+(* Widen the element type of every non-scalar vector in [ty] to whole
+   components: positive atoms are enlarged, negative ones reduced (hence dropped
+   when that empties them). Scalars and bare primitives are left alone. The
+   result is a supertype of [ty] that satisfies rstt's vector invariant. *)
+let enlarge_vector_contents ty =
+  let open Sstt in
+  let fix_vec_comp c =
+    if not (Tag.equal (TagComp.tag c) Rstt.Vec.tag) then c
+    else
+      let ty = Tags.mk_comp c |> Descr.mk_tags |> Ty.mk_descr in
+      let pos = function
+        | Rstt.Vec.Vector c -> Rstt.Vec.Vector (Rstt.Prim.enlarge c)
+        | Rstt.Vec.Scalar _ as a -> a in
+      let neg = function
+        | Rstt.Vec.Vector c -> Rstt.Vec.Vector (Rstt.Prim.reduce c)
+        | Rstt.Vec.Scalar _ as a -> a in
+      Rstt.Vec.destruct ty
+      |> List.map (fun (p, ns) -> Rstt.Vec.mk_line (pos p, List.map neg ns))
+      |> Ty.disj |> Ty.get_descr |> Descr.get_tags |> Tags.get Rstt.Vec.tag
+  in
+  let fix_descr d =
+    let b, comps = Descr.destruct d in
+    let comps = comps |> List.map (function
+      | Descr.Tags t ->
+        let b, cs = Tags.destruct t in
+        Descr.Tags (Tags.construct (b, List.map fix_vec_comp cs))
+      | c -> c) in
+    Descr.construct (b, comps)
+  in
+  Transform.transform (VDescr.map fix_descr) ty
+
+let subst_normalization (ctx : Mlsem_system.Heuristics.tally_context) substs =
+  substs |> List.filter_map (fun s ->
+    let env_part = Subst.restrict ctx.tvars s in
+    match Rstt.TyOp.normalize_subst env_part with
+    | None -> None
+    | Some env_part ->
+      let fresh_part =
+        Subst.remove_many ctx.tvars s |> Subst.map1 enlarge_vector_contents in
+      Some (Subst.combine env_part fresh_part))
+
 let () =
-  (* Register before rstt's own params so the overrides for [Prim] and [Vec]
-     win in [TagMap.of_list] (later-merged extensions overwrite earlier ones,
-     and [add_printer_param] prepends — so earliest call ends up last). *)
-  Mlsem_types.PrinterCfg.add_printer_param Prim_pp.printer_params ;
-  Mlsem_types.PrinterCfg.add_printer_param Vec_pp.printer_params ;
+  (* rstt registers its own printers for [Prim], [Vec], [Lst], ... at module
+     initialisation; [Rstt.Pp.printer_params ()] returns the accumulated set. *)
   Mlsem_types.PrinterCfg.set_descr_printer Rstt.Pp.print_descr_ctx ;
   Mlsem_types.PrinterCfg.set_printer Rstt.Pp.print ;
   Mlsem_types.PrinterCfg.add_printer_param (Rstt.Pp.printer_params ()) ;
@@ -772,7 +848,8 @@ let () =
      diagnostics like [r_attrib_get_cb: (any | chr, ...)] become readable. *)
   Mlsem_types.PrinterCfg.add_printer_param
     (Rstt.Pp.printer_params' [(Rstt.Attr.any, "attr_any"); (Defs.any_sexp, "any_sexp")]) ;
-  Mlsem_system.Config.normalization_fun := Rstt.Simplify.partition_vecs
+  Mlsem_system.Config.normalization_fun := Fun.id ;
+  Mlsem_system.Config.subst_normalization_fun := subst_normalization
 
 let%test "filter predicate with Some substring" =
   let pred = make_substring_pred (Some "from") in
