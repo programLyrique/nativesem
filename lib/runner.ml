@@ -912,12 +912,26 @@ let enlarge_vector_contents ty =
 
 let subst_normalization (ctx : Mlsem_system.Heuristics.tally_context) substs =
   substs |> List.filter_map (fun s ->
-    let env_part = Subst.restrict ctx.tvars s in
+    (* The environment after this step holds not only [ctx.tvars] but every
+       variable the solution introduces into their bindings -- the same
+       [ntvars] mlsem computes in [Reconstruction.tally_simpl]. Such a variable
+       is not consumed here: it lives on in the environment, and if [s] also
+       binds it, that binding must satisfy the conservative rule too. *)
+    let tvars =
+      MVarSet.union ctx.tvars (Subst.restrict ctx.tvars s |> Subst.intro) in
+    let env_part = Subst.restrict tvars s in
     match Rstt.TyOp.normalize_subst env_part with
     | None -> None
     | Some env_part ->
+      (* [normalize_subst] rewrites a binding and *composes*, so every other
+         binding that mentions the rewritten variable follows. Splitting [s]
+         in two loses that for the fresh bindings: solutions are routinely not
+         idempotent, so a fresh binding may well mention an environment
+         variable whose binding was just rewritten. Re-apply the normalized
+         environment part to them before recombining. *)
       let fresh_part =
-        Subst.remove_many ctx.tvars s |> Subst.map1 enlarge_vector_contents in
+        Subst.remove_many tvars s
+        |> Subst.map1 (fun ty -> Subst.apply env_part ty |> enlarge_vector_contents) in
       Some (Subst.combine env_part fresh_part))
 
 let () =
