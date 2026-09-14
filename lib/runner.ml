@@ -922,17 +922,22 @@ let subst_normalization (ctx : Mlsem_system.Heuristics.tally_context) substs =
     let env_part = Subst.restrict tvars s in
     match Rstt.TyOp.normalize_subst env_part with
     | None -> None
-    | Some env_part ->
-      (* [normalize_subst] rewrites a binding and *composes*, so every other
-         binding that mentions the rewritten variable follows. Splitting [s]
-         in two loses that for the fresh bindings: solutions are routinely not
-         idempotent, so a fresh binding may well mention an environment
-         variable whose binding was just rewritten. Re-apply the normalized
-         environment part to them before recombining. *)
+    | Some env_part' ->
+      (* [normalize_subst] rewrites a binding and *composes* it into the rest
+         of the solution, so every other binding mentioning the rewritten
+         variable follows. Splitting [s] in two loses that for the fresh
+         bindings: solutions are routinely not idempotent, so a fresh binding
+         may well mention an environment variable whose binding was just
+         rewritten. Propagate exactly the rewritten bindings -- and only those:
+         substitutions are applied once, so resolving an untouched variable
+         here would be a second application. *)
+      let rewritten =
+        env_part' |> Subst.filter1 (fun v ty ->
+          not (Sstt.Ty.equiv ty (Subst.find1 env_part v))) in
       let fresh_part =
         Subst.remove_many tvars s
-        |> Subst.map1 (fun ty -> Subst.apply env_part ty |> enlarge_vector_contents) in
-      Some (Subst.combine env_part fresh_part))
+        |> Subst.map1 (fun ty -> Subst.apply rewritten ty |> enlarge_vector_contents) in
+      Some (Subst.combine env_part' fresh_part))
 
 let () =
   (* rstt registers its own printers for [Prim], [Vec], [Lst], ... at module
