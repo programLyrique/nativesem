@@ -13,8 +13,11 @@ jobs:
       # Known-good pins of the SSTT/MLsem/RSTT stack. RSTT here is the
       # length-free vector representation (Vec.Vector / Vec.Scalar); the
       # types/*.ty files and lib/defs.ml are written against it.
-      SSTT_REF: b267f021d7cf7ecb4ae21c1d790ca8a7b71171fa
-      MLSEM_REF: 6cd8d24d5fec02f2e64b1b80c396c0ef27c859fd
+      # SSTT/MLsem follow their main branches as of 2026-09-24, the versions
+      # Rsem's opam file tracks (#main): typr builds NativeSem and Rsem in one
+      # workspace, so the two must agree, and the Dockerfile pins the same.
+      SSTT_REF: b44200579ebf2522da24d7d7105bbf1699d1e9d2
+      MLSEM_REF: 7fae576697b3cf29e9331273d8a98ca797c9cfd3
       RSTT_REF: 8b197ea9366caff98c6460b1ef4801b72c77dfbb
     steps:
       # Checkout repository

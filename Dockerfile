@@ -23,8 +23,8 @@ RUN opam update --yes && eval $(opam env) && \
 # Known-good pins of the set-theoretic stack. This RSTT is the length-free
 # vector representation (Vec.Vector / Vec.Scalar); the types/*.ty files and
 # lib/defs.ml are written against it. Keep in sync with .github/workflows/ci.yml.
-ARG SSTT_REF=b267f021d7cf7ecb4ae21c1d790ca8a7b71171fa
-ARG MLSEM_REF=6cd8d24d5fec02f2e64b1b80c396c0ef27c859fd
+ARG SSTT_REF=b44200579ebf2522da24d7d7105bbf1699d1e9d2
+ARG MLSEM_REF=7fae576697b3cf29e9331273d8a98ca797c9cfd3
 ARG RSTT_REF=8b197ea9366caff98c6460b1ef4801b72c77dfbb
 
 # sstt, MLsem, and RSTT are now public — no PAT needed.
