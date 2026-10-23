@@ -6,3 +6,9 @@ sibling_blocks: () -> c_false
 
 doubly_nested: ∀'a. [c_int_na & 'a] -> c_int_na & 'a
 
+lone_decl: () -> ()
+
+lone_decl_deref: [*c_int_na] -> ()
+
+lone_multi_decl: () -> ()
+

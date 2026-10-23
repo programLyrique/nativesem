@@ -62,3 +62,18 @@ int doubly_nested(int x) {
   }
   return x;
 }
+
+// A body made of one initialized declaration used to lose its block: the
+// declaration landed in a bare Seq, so [x] was never declared and its
+// assignment hit "Cannot assign to an immutable variable".
+void lone_decl(void) {
+  int x = 1;
+}
+
+void lone_decl_deref(int *p) {
+  int x = *p;
+}
+
+void lone_multi_decl(void) {
+  int a = 1, b = 2;
+}

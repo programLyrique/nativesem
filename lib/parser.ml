@@ -1332,7 +1332,15 @@ and aux_body body =
   let (l1,_),block_items,(l2,_) = body in
   let block_items = Preprocessor.expand_block_items block_items in
   let stmts = List.map aux_block_item block_items in
-  if Utils.is_singleton stmts then
+  (* A lone declaration keeps its [Block]: the block is the scope it is
+     declared in, and a bare [Seq] declares nothing, so the variable would
+     fall through to an (immutable) unknown name. *)
+  let rec declares (_, e) = match e with
+    | A.VarDeclare _ -> true
+    | A.Seq es -> List.exists declares es
+    | _ -> false
+  in
+  if Utils.is_singleton stmts && not (declares (List.hd stmts)) then
     List.hd stmts
   else
     (locs_to_pos l1 l2, A.Block stmts)
