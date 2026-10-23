@@ -263,8 +263,12 @@ let rec aux_struct_fields name fields =
 and aux_struct struc = 
   match struc with 
   |`Id_opt_field_decl_list ((_loc, name), Some (_,fields,_)) -> aux_struct_fields name fields
-  (* Anonymous struct: we don't give it a name so far *)
-  | `Field_decl_list (_,fields,_) -> aux_struct_fields "" fields
+  (* Anonymous struct: give it a fresh name. [Ast.typeof_ctype] and
+     [PAst.resolve_ctype] detect recursion by struct name, so a shared name
+     would make an anonymous struct nested in another one look like a
+     back-edge to it (and the outer struct an uninhabited recursive type).
+     '#' cannot occur in a C tag, so the name never clashes with a real one. *)
+  | `Field_decl_list (_,fields,_) -> aux_struct_fields ("anon#" ^ string_of_int (gen_id ())) fields
   (* Named reference to an already declared struct, e.g. `struct Point p;`.
      We keep the struct tag and resolve it later through DeclMap. *)
   | `Id_opt_field_decl_list ((_loc, name), None) -> Ast.Struct (name, [])

@@ -14,3 +14,11 @@ ap_create_problem: [*c_double, c_int_na] -> *{ n : c_int_na ; C : *(*c_double) ;
 
 unsat_iter: ([*{ x : c_int_na ; p : *c_int_na }, *{ p : *c_int_na ; a : c_int_na }] -> ()) & ([*{ x : c_int_na ; p : *c_int_na }, c_null] | [c_null, *{ p : *c_int_na ; a : c_int_na }] -> empty)
 
+anon_nested: ∀'a. [*{ m : { x : c_int_na & 'a } }] -> 'a
+
+anon_nested2: ([*{ a : c_int ; m : { x : c_int } }] -> c_int) & ([*{ a : c_int_na ; m : { x : c_int_na } }] -> c_int_na) & ([c_null] -> empty)
+
+anon_nested_cast: [*c_void] -> *{ m : { x : c_int_na } }
+
+anon_nested_ptr: ∀'a. [*{ m : *{ x : c_int_na & 'a } }] -> 'a
+

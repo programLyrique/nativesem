@@ -119,3 +119,29 @@ void unsat_iter(struct UnsatB *b, struct UnsatA *a) {
     b->p = b->p + a->a;
     b->x = a->a;
 }
+/* Regression: every anonymous struct used to be named "", so one nested by
+ * value in another anonymous struct was read as a recursive occurrence of
+ * the outer one. The outer type became an uninhabited recursive record and
+ * pointers to it c_null. Minimised from curl's `reference`, which embeds
+ * `memory` and `async` this way.
+ */
+typedef struct { int x; } AnonInner;
+typedef struct { AnonInner m; } AnonOuter;
+typedef struct { int a; AnonInner m; } AnonOuter2;
+typedef struct { AnonInner *m; } AnonOuterPtr;
+
+int anon_nested(AnonOuter *o) {
+  return o->m.x;
+}
+
+int anon_nested2(AnonOuter2 *o) {
+  return o->a + o->m.x;
+}
+
+AnonOuter *anon_nested_cast(void *v) {
+  return (AnonOuter *) v;
+}
+
+int anon_nested_ptr(AnonOuterPtr *o) {
+  return o->m->x;
+}
