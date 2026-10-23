@@ -47,12 +47,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Notify the r-typing repo so it reruns the analysis pipeline.
-      # Requires a PAT (PIPELINE_DISPATCH_TOKEN) with `workflow` scope on
-      # the r-typing repository, stored as a secret here in nativesem.
-      - name: Trigger r-typing pipeline
+      # Notify TypR, which drives NativeSem over whole packages: it rebuilds
+      # its image with every submodule refreshed to its branch tip (an
+      # "unpinned" build) and then triggers the r-typing dashboard itself.
+      # Requires a PAT (PIPELINE_DISPATCH_TOKEN) with Contents read & write on
+      # PRL-PRG/typr, stored as a secret here in nativesem.
+      - name: Trigger TypR rebuild
         uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
-          repository: PRL-PRG/r-typing
-          event-type: r-c-typing-updated
+          repository: PRL-PRG/typr
+          event-type: dependency-updated
+          client-payload: >-
+            {"repository": "${{ github.repository }}", "sha": "${{ github.sha }}"}
