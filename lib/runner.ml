@@ -590,14 +590,18 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
      | None -> ());
     (idenv, env, decl)
   | _ ->
-      (* A function not bound yet is first bound, quietly, at its declared C
-         signature, so that a recursive call in its own body sees that
-         signature instead of an unbound name ([fact] calling [fact]). The
-         inferred type replaces it below. *)
+      (* A recursive function (its body refers to its own name, a self-loop
+         in the call graph) is first bound, quietly, at its declared C
+         signature, so that its recursive calls see that signature instead of
+         an unbound name. Only their results are as coarse as the signature:
+         the rest of the body is still inferred (domain refinements,
+         non-recursive branches), and the inferred type replaces the binding
+         below. *)
       let idenv, env, decl =
         match past with
-        | _, PAst.Fundef (ret_ty, name, params, _)
-          when opts.fallback_c_signature && not (Idenv.mem (id name) idenv) ->
+        | _, PAst.Fundef (ret_ty, name, params, body)
+          when opts.fallback_c_signature && not (Idenv.mem (id name) idenv)
+               && PAst.extract_calls_from_expr ~fun_names:(PAst.StrSet.singleton name) body <> [] ->
             bind_fallback ~report:(fun _ -> ()) false (idenv, env, decl) (id name)
               (MVariable.create MVariable.Immut (Some name))
               (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
