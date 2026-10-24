@@ -48,6 +48,22 @@
  (alias runtest)
  (deps
   (glob_files ../types/*.ty)
+  (source_tree packages/header-statics))
+ (action
+  (with-stdout-to
+   header-statics.output
+   (run %{exe:package_test.exe} packages/header-statics))))
+
+(rule
+ (alias runtest)
+ (deps packages/header-statics.expected header-statics.output)
+ (action
+  (diff packages/header-statics.expected header-statics.output)))
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files ../types/*.ty)
   (source_tree packages/cross-file-struct))
  (action
   (with-stdout-to

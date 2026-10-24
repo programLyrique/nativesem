@@ -821,7 +821,10 @@ let run_on_pasts opts pasts ?entry_points idenv env =
           (fun (idenv, env, decl, internal_idenvs) item ->
             match item with
             | _, (PAst.Fundef _ | PAst.MacroDef _) -> (idenv, env, decl, internal_idenvs)
-            | _, PAst.GlobalVar (PAst.Static, _, _) ->
+            (* A [static] in a header is in every file that includes it (local
+               includes are not followed): bound package-wide, below. *)
+            | _, PAst.GlobalVar (PAst.Static, _, _)
+              when not (Filename.check_suffix filename ".h") ->
                 let file_idenv =
                   StrMap.find_opt filename internal_idenvs
                   |> Option.value ~default:Idenv.empty
