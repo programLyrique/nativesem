@@ -22,3 +22,13 @@ anon_nested_cast: [*c_void] -> *{ m : { x : c_int_na } }
 
 anon_nested_ptr: ∀'a. [*{ m : *{ x : c_int_na & 'a } }] -> 'a
 
+init_use: ([*{ p : *c_int_na ; a : c_int ; b : c_int }] -> c_int) & ([*{ p : *c_int_na ; a : c_int_na ; b : c_int_na }] -> c_int_na) & ([c_null] -> empty)
+
+init_partial: () -> c_int_na
+
+init_full: () -> c_int
+
+init_zero: () -> c_int_na
+
+init_positional: () -> c_int
+

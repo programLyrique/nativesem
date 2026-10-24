@@ -289,6 +289,51 @@ let rec has_struct_type ty =
   | Ast.Array (t, _) -> has_struct_type t
   | _ -> false
 
+(* The statements [rest] following the declaration of the struct variable [s]
+   (fields [fields]), adjusted to what C does with its initializer. The
+   declaration itself gives every field its declared type (a sound
+   over-approximation of C's zero value, see [aux_block]); the parser then
+   lowers the initializer without knowing the fields:
+
+   - a designated list [{ .a = 1 }] is seeded with an empty record, which
+     would drop the fields it does not name: the seed is removed;
+   - a literal [0] written to a pointer field ([.p = 0]) is a NULL pointer, not
+     an integer;
+   - a positional list of constants ([{ 0 }], [{ 1, 2 }]) is assigned as an
+     array: its constants go to the fields in declaration order instead. *)
+let adjust_struct_init s fields rest =
+  let is_pointer f =
+    match List.find_map (fun (ty, n) -> if n = f then Some ty else None) fields with
+    | Some (Ast.Ptr _ | Ast.FunPtr _) -> true
+    | _ -> false
+  in
+  let field_value f (p, e) =
+    match e with
+    | Const (CInt 0) when is_pointer f -> (p, Const CNull)
+    | _ -> (p, e)
+  in
+  let rec designated = function
+    | (p, VarAssign ((pl, FieldAccess ((pb, Id s'), f)), rhs)) :: tl when s' = s ->
+        (p, VarAssign ((pl, FieldAccess ((pb, Id s'), f)), field_value f rhs)) :: designated tl
+    | stmts -> stmts
+  in
+  match rest with
+  | (_, VarAssign ((_, Id s'), (_, Cast (Ast.Struct ("", []), (_, Const CNull))))) :: tl
+    when s' = s -> designated tl
+  | (p, VarAssign ((_, Id s'), (_, Const (CArray cs)))) :: tl when s' = s ->
+      let rec positional fields cs =
+        match fields, cs with
+        | (_, f) :: fields, c :: cs ->
+            (match c with
+             | CArray _ -> positional fields cs (* a nested aggregate: left at its declared type *)
+             | c ->
+                 (p, VarAssign ((p, FieldAccess ((p, Id s), f)), field_value f (p, Const c)))
+                 :: positional fields cs)
+        | _ -> []
+      in
+      positional fields cs @ tl
+  | _ -> rest
+
 (* Full lookup chain for [str]: scope frames (innermost first), builtin op,
    builtin var, .ty bindings. Returns [Some v] if [str] resolves to a
    concrete binding, [None] if it would fall through to the fresh-variable
@@ -637,6 +682,11 @@ and aux_block env stmts =
                    fresh_e env (Ast.Cast (typ, fresh_e env (Ast.Const Ast.CNull)))))
                else
                  fresh_e env Ast.Noop
+             in
+             let rest =
+               match typ with
+               | Ast.Struct (_, fields) -> adjust_struct_init s fields rest
+               | _ -> rest
              in
              let rest_e = loop env' rest in
              fresh_e env (Ast.Declare (v, fresh_e env (Ast.Seq (init_e, rest_e))))

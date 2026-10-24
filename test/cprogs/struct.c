@@ -145,3 +145,15 @@ AnonOuter *anon_nested_cast(void *v) {
 int anon_nested_ptr(AnonOuterPtr *o) {
   return o->m->x;
 }
+
+/* Struct initializers. C zero-initializes the fields an initializer does not
+ * name; they keep their declared types here. A literal 0 written to a pointer
+ * field is NULL, and a positional list fills the fields in order. Each used to
+ * fail: the omitted fields were missing from the record, .p = 0 stored an int
+ * in a pointer field, and { 0 } / { 1, 2 } were assigned as arrays. */
+struct InitOpts { int a; int b; int *p; };
+int init_use(const struct InitOpts *o) { return o->a + o->b; }
+int init_partial(void) { struct InitOpts o = { .a = 1 }; return init_use(&o); }
+int init_full(void) { struct InitOpts o = { .a = 1, .b = 2, .p = 0 }; return init_use(&o); }
+int init_zero(void) { struct InitOpts o = { 0 }; return init_use(&o); }
+int init_positional(void) { struct InitOpts o = { 1, 2 }; return init_use(&o); }
