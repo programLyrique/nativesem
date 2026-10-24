@@ -44,6 +44,23 @@
  (action
   (diff packages/dup-globals.expected dup-globals.output)))
 
+; Typed with --fallback-c-signature, which recursion relies on.
+(rule
+ (alias runtest)
+ (deps
+  (glob_files ../types/*.ty)
+  cprogs/recursion.c)
+ (action
+  (with-stdout-to
+   recursion.output
+   (run %{exe:typing_test.exe} --fallback-c-signature %{dep:cprogs/recursion.c}))))
+
+(rule
+ (alias runtest)
+ (deps cprogs/recursion.expected recursion.output)
+ (action
+  (diff cprogs/recursion.expected recursion.output)))
+
 (rule
  (alias runtest)
  (deps

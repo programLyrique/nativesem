@@ -3,17 +3,21 @@ open Mlsem.Types
 module System = Mlsem.System
 
 let usage () =
-  prerr_endline "Usage: typing_test.exe <c-file>";
+  prerr_endline "Usage: typing_test.exe [--fallback-c-signature] <c-file>";
   exit 2
 
 let () =
   System.Config.infer_overload := true ;
-  if Array.length Sys.argv <> 2 then usage ();
-  let full_c_file = Sys.argv.(1) in
+  let fallback_c_signature, full_c_file =
+    match Array.to_list Sys.argv with
+    | [ _ ; file ] -> false, file
+    | [ _ ; "--fallback-c-signature" ; file ] -> true, file
+    | _ -> usage ()
+  in
   (* Options: enable parsing of the PAst and typing, but do not print CST/AST/MLsem. *)
   let opts = Runner.{ cst = false; past = false; ast = false; mlsem = false;
                       typing = true; debug = false; filter = None; timeout = None;
-                      fallback_c_signature = false; call_graph = None;
+                      fallback_c_signature; call_graph = None;
                       log_times = false } in
   let idenv = Runner.Idenv.empty in
   let env = Defs.initial_env in

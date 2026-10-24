@@ -1,0 +1,10 @@
+Entry points detected: Call=1, C=0, Fortran=0, External=0
+Entry points for .Call convention:
+  R_lookup
+
+Entry points for .C convention:
+
+lookup: [c_int_na] -> c_int_na
+
+R_lookup: [INT] -> INT1
+

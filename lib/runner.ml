@@ -590,7 +590,19 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
      | None -> ());
     (idenv, env, decl)
   | _ ->
-
+      (* A function not bound yet is first bound, quietly, at its declared C
+         signature, so that a recursive call in its own body sees that
+         signature instead of an unbound name ([fact] calling [fact]). The
+         inferred type replaces it below. *)
+      let idenv, env, decl =
+        match past with
+        | _, PAst.Fundef (ret_ty, name, params, _)
+          when opts.fallback_c_signature && not (Idenv.mem (id name) idenv) ->
+            bind_fallback ~report:(fun _ -> ()) false (idenv, env, decl) (id name)
+              (MVariable.create MVariable.Immut (Some name))
+              (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
+        | _ -> (idenv, env, decl)
+      in
       let e = PAst.transform {PAst.id = [idenv]; decl} past in
       if opts.ast && visible then
         Printf.printf "%s\n" (Ast.show_e e);

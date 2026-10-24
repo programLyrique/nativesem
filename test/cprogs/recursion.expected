@@ -1,0 +1,10 @@
+fact: [c_int_na] -> c_int_na
+
+sum_to: [c_int_na] -> c_int_na
+
+fact5: () -> c_int_na
+
+depth: ([lang] -> c_int_na) & ([(~lang)<...> | null | p(CHR) | sym] -> c_false)
+
+last: ∀'a. ([lang & 'a] -> any_sexp) & ([null & 'a] -> null & 'a)
+
