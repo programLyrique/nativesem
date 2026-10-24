@@ -410,6 +410,16 @@ let rec aux_e env (pos,e) =
   | Const c -> Ast.Const (aux_const c)
   | Id s -> Ast.Id (var env s)
   | Unop (op, e) -> Ast.Unop (var env (op ^ "__1"), aux_e env e)
+  | Binop (("&&" | "||") as op, (e1, e2)) ->
+      (* C's [&&] and [||] short-circuit: [b] is evaluated only when [a] does
+         not decide. Lowered to conditionals, [a ? (b ? 1 : 0) : 0] and
+         [a ? 1 : (b ? 1 : 0)], which also narrow [a] where [b] is evaluated:
+         in [p && *p], [*p] is typed with [p] non-NULL. *)
+      let one = (pos, Const (CInt 1)) and zero = (pos, Const (CInt 0)) in
+      let b = (pos, Ite (e2, one, zero)) in
+      let e = if op = "&&" then Ite (e1, b, zero) else Ite (e1, one, b) in
+      let (_, _, _, e) = aux_e env (pos, e) in
+      e
   | Binop (op, (e1,e2)) -> Ast.Binop (var env (op ^ "__2"), aux_e env e1, aux_e env e2)
   | VarAssign ((_,Id s), e2) -> Ast.VarAssign (var env s, aux_e env e2)
   | VarAssign ((loc1, Call ((_,Id "[]"), ((_, Id base_name) :: _ as args))) ,e2) ->
@@ -770,8 +780,20 @@ and translate_def env key ret_ty name params body =
         env
         param_vars
     in
+    (* C converts an argument to a [bool] parameter: any scalar is accepted,
+       and the callee sees 0 or 1. So a [bool] parameter is typed as an [int]
+       and converted, [b = (b != 0)], on entry. Typed as [c_bool] instead, it
+       made every caller passing an ordinary [int] fail. *)
+    let is_bool ty = resolve_ctype env.decl ty = Ast.Bool in
+    let to_bool =
+      List.filter_map (function
+          | Param (ty, n) when is_bool ty ->
+            let p = fst body in
+            Some (p, VarAssign ((p, Id n), (p, Binop ("!=", ((p, Id n), (p, Const (CInt 0)))))))
+          | _ -> None) params
+    in
     let e = match body with
-      | _, Block stmts -> aux_block (push_scope env) stmts
+      | _, Block stmts -> aux_block (push_scope env) (to_bool @ stmts)
       | _ -> aux_e env body
     in
     if List.mem Vararg params then
@@ -779,6 +801,7 @@ and translate_def env key ret_ty name params body =
         (List.length (List.filter (function Param _ -> true | Vararg -> false) params));
     let params =
       List.filter_map (function
+        | Param (ty, name) when is_bool ty -> Some (Ast.Int, var env name)
         | Param (ty, name) -> Some (resolve_ctype env.decl ty, var env name)
         | Vararg -> None) params
     in

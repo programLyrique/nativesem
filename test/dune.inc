@@ -463,3 +463,14 @@
  (deps    cprogs/noreturn-macro.c cprogs/noreturn-macro.expected)
  (action  (diff cprogs/noreturn-macro.expected noreturn-macro.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/truthiness.c)
+ (action  (with-stdout-to truthiness.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/truthiness.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/truthiness.c cprogs/truthiness.expected)
+ (action  (diff cprogs/truthiness.expected truthiness.output)))
+

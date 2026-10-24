@@ -57,6 +57,9 @@ let infer_cfun ?(typedef_map = Ast.DeclMap.empty) return_ty params =
     else
       let arg_types =
         List.filter_map (function
+          (* A [bool] parameter takes any [int], converted by C at the call
+             (cf. [PAst.translate_def]). *)
+          | Param (ty, _) when resolve ty = Ast.Bool -> Some (Ast.typeof_ctype Ast.Int)
           | Param (ty, _) -> Some (Ast.typeof_ctype (resolve ty))
           | Vararg -> None) params
       in

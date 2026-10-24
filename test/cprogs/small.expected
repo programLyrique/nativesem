@@ -4,7 +4,7 @@ errorIntScalar: [INT1] -> ()
 
 make_scalar: () -> INT1
 
-isIntScalar: ([INT] -> c_bool) & ([INT1] -> c_true) & ([((CHR | CLX | DBL | LGL | RAW) | list) | p(CHR)] -> c_false)
+isIntScalar: ([INT] -> c_bool) & ([INT1] -> c_true) & ([(~INT)<...> | null | p(CHR) | sym] -> c_false)
 
 check: () -> c_false
 

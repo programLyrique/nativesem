@@ -298,8 +298,13 @@ Rf_envlength: [env] --> c_int
 CDR: [lang] --> any_sexp
 
 // Boolean operators and comparisons
-||__2: ([c_true, c_true] | [c_true, c_false] | [c_false, c_true] --> c_true) & ([c_false, c_false] --> c_false)
-&&__2: ([c_false, c_false] | [c_true, c_false] | [c_false, c_true] --> c_false) & ([c_true, c_true] --> c_true)
+// C truthiness, as in !__1: any scalar is a condition, 0 and NULL being false.
+// The second operand is not evaluated when the first decides (short circuit),
+// hence [any] there. (Doubles are not covered, as in !__1.)
+c_falsy = c_false | c_null
+c_truthy = c(.. -1) | c(1 ..) | (*any \ c_null) | c_string
+||__2: ([c_truthy, any] | [c_falsy, c_truthy] --> c_true) & ([c_falsy, c_falsy] --> c_false)
+&&__2: ([c_falsy, any] | [c_truthy, c_falsy] --> c_false) & ([c_truthy, c_truthy] --> c_true)
 ==__2: [any, any] --> c_bool
 !=__2: [any, any] --> c_bool
 !__1: ([c_true] --> c_false) & ([c_false] --> c_true) & ([c(.. -1) | c(1 ..)] --> c_false) & ([c_null] --> c_true) & ([*any \ c_null] --> c_false) & ([c_string] --> c_false)
