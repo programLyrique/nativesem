@@ -441,3 +441,25 @@
  (deps    cprogs/inherits.c cprogs/inherits.expected)
  (action  (diff cprogs/inherits.expected inherits.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/macro-namespace.c)
+ (action  (with-stdout-to macro-namespace.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/macro-namespace.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/macro-namespace.c cprogs/macro-namespace.expected)
+ (action  (diff cprogs/macro-namespace.expected macro-namespace.output)))
+
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/noreturn-macro.c)
+ (action  (with-stdout-to noreturn-macro.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/noreturn-macro.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/noreturn-macro.c cprogs/noreturn-macro.expected)
+ (action  (diff cprogs/noreturn-macro.expected noreturn-macro.output)))
+

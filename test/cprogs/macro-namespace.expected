@@ -1,0 +1,12 @@
+clamp: [c_int_na, c_int_na] --> c_int_na
+
+clamp: [c_int_na] -> c_int_na
+
+clamp: ∀'a,'b. [c_int_na & 'a, c_int_na & 'b] -> c_int_na & 'a | c_int_na & 'b
+
+via_macro: [c_int_na] -> c_int_na
+
+via_function: ∀'a. [c_int_na & 'a] -> c(3) | c_int_na & 'a
+
+after_undef: ∀'a. [c_int_na & 'a] -> c(5) | c_int_na & 'a
+

@@ -35,6 +35,14 @@ let seen_define_names : StrSet.t ref = ref StrSet.empty
 
 let reset_seen_define_names () = seen_define_names := StrSet.empty
 
+(* The function-like macros defined so far, minus those [#undef]'d. A name is
+   added once the macro's own body has been parsed: inside its expansion C
+   does not expand the macro again, so [NAME(...)] there is an ordinary call.
+   The parser turns [NAME(...)] into a [MacroCall] for these names. *)
+let function_macros : StrSet.t ref = ref StrSet.empty
+
+let is_function_macro name = StrSet.mem name !function_macros
+
 let remember_seen_define_name name =
   seen_define_names := StrSet.add name !seen_define_names
 
@@ -298,7 +306,7 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
                  | item :: _ -> item
                  | [] -> declaration_body)
     in
-    Some (U.locs_to_pos loc1 loc2, A.Fundef (Ast.Any, name, params, body))
+    Some (U.locs_to_pos loc1 loc2, A.MacroDef (name, params, body))
   with
   | Failure msg ->
       if !warn_unsupported then
@@ -555,9 +563,12 @@ and top_level_item_dispatch ~parser_callbacks ~top_level_item ~top_level_block_i
          | Some item -> [item])
   | `Prep_func_def func_def ->
       let (_, name_tok, _, _, _) = func_def in
-      remember_seen_define_name (U.token_to_string name_tok);
+      let name = U.token_to_string name_tok in
+      remember_seen_define_name name;
+      let item = parse_preproc_function_def parser_callbacks func_def in
+      function_macros := StrSet.add name !function_macros;
       (defines,
-       match parse_preproc_function_def parser_callbacks func_def with
+       match item with
        | None -> []
        | Some item -> [item])
   | `Prep_incl (_, `System_lib_str path, _) ->
@@ -582,9 +593,8 @@ and top_level_item_dispatch ~parser_callbacks ~top_level_item ~top_level_block_i
          [#ifdef]/[#endif] (most commonly the [extern "C"] linkage guards seen
          in CRAN headers), plus [#pragma], [#warning], [#error], [#line],
          [#ident], [#include_next], [#undef], etc. Most of these are inert for
-         type checking and we drop them silently; [#undef] is the exception —
-         silently dropping it would leave a previously [#define]'d macro
-         visible for the rest of the file, so warn about it explicitly. *)
+         type checking and we drop them silently; [#undef] is the exception,
+         undoing a [#define]. *)
       let directive =
         U.token_to_string directive_tok
         |> String.trim
@@ -593,14 +603,19 @@ and top_level_item_dispatch ~parser_callbacks ~top_level_item ~top_level_block_i
           then String.trim (String.sub s 1 (String.length s - 1))
           else s
       in
-      if directive = "undef" && !warn_unsupported then begin
-        let arg = match arg_opt with
-          | Some (_, s) -> " " ^ String.trim s
-          | None -> ""
-        in
-        Printf.printf "Not supported yet: #undef%s\n" arg
-      end;
-      (defines, [])
+      (match directive, arg_opt with
+       | "undef", Some (_, arg) ->
+           (* The name is no longer defined: [#ifdef] is false again, a
+              constant or alias is forgotten, and a function-like macro stops
+              being one, so later [NAME(...)] are calls again (vctrs [#undef]s
+              its code-generating macros after use). *)
+           let name = String.trim arg in
+           function_macros := StrSet.remove name !function_macros;
+           seen_define_names := StrSet.remove name !seen_define_names;
+           remove_define_constant name;
+           A.remove_define_alias name;
+           (StrSet.remove name defines, [])
+       | _ -> (defines, []))
   | _ ->
       top_level_item defines item
 
@@ -851,15 +866,22 @@ let capture_stdout f =
   (result, Buffer.contents buf)
 
 
-let%test "top_level_items warns on #undef while still dropping it" =
+let%test "top_level_items honours #undef" =
   with_test_state (fun () ->
-    set_warn_unsupported true;
-    let items, output =
-      capture_stdout (fun () ->
-        preprocess_source_with_defines StrSet.empty "#undef FOO\n")
+    (* How many ordinary items (here, [int x;]) survive preprocessing. *)
+    let count source =
+      let marker = (Mlsem.Common.Position.dummy, A.Include []) in
+      let keep defines _ = (defines, [ marker ]) in
+      let items, _ =
+        capture_stdout (fun () ->
+          snd (top_level_items ~parser_callbacks:(make_test_callbacks ())
+                 ~top_level_item:keep ~top_level_block_item:keep
+                 StrSet.empty (parse_translation_unit_exn source)))
+      in
+      List.length (List.filter (fun i -> i == marker) items)
     in
-    items = []
-    && contains_substring ~haystack:output ~needle:"Not supported yet: #undef FOO")
+    count "#define FOO 1\n#ifdef FOO\nint x;\n#endif\n" = 1
+    && count "#define FOO 1\n#undef FOO\n#ifdef FOO\nint x;\n#endif\n" = 0)
 
 
 let%test "system includes are parsed once and cached" =

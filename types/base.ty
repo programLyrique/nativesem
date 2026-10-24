@@ -352,6 +352,9 @@ __FILE__: c_string
 __LINE__: c_int
 __DATE__: c_string
 __TIME__: c_string
+// The arguments a variadic function-like macro forwards; a macro's variadic
+// domain is any (keep in sync with Defs).
+__VA_ARGS__: any
 
 // R API: error/warning
 Rf_error: any --> empty // redundant with error but like fail. The best would be to generate 2 versions of the function and pick the one which type checks?

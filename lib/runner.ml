@@ -4,6 +4,12 @@ module System = Mlsem.System
 module MVariable = Mlsem.Lang.MVariable
 
 module StrMap = Map.Make(String)
+
+(* The identifier environment, [idenv]: the C names bound so far, each in its
+   namespace ([PAst.Name.Ident] or, for a function-like macro,
+   [PAst.Name.Macro]). *)
+module Idenv = PAst.NameMap
+let id name = PAst.Name.Ident name
 module StrSet = Set.Make(String)
 
 exception Inference_timeout of float
@@ -136,7 +142,7 @@ let is_declaration = function
 let has_ty_binding name = Defs.StrMap.mem name Defs.defs_map
 
 let find_existing_binding name idenv env =
-  match StrMap.find_opt name idenv with
+  match Idenv.find_opt (id name) idenv with
   | Some v ->
       (try Some (v, Env.find v env)
        with Not_found -> None)
@@ -148,7 +154,7 @@ let find_existing_binding name idenv env =
       | None -> None
 
 let has_existing_binding name idenv =
-  StrMap.mem name idenv || has_ty_binding name
+  Idenv.mem (id name) idenv || has_ty_binding name
 
 let register_enum_constants ty : (Variable.t * Ty.t) list =
   let rec aux ty =
@@ -211,25 +217,28 @@ let with_inference_timeout timeout thunk =
           ignore (Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.; it_value = seconds });
           thunk ())
 
-let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
+(* Bind [v] under [key] at the declared C signature [compute ()], printing a
+   [fallback:] line and reporting a [Fallback] outcome. Leaves the
+   environments unchanged if the signature cannot be built. Shared by
+   [infer_ast] (inference failed) and [bind_c_signature] (an embedder's own
+   time limit fired). *)
+let bind_fallback ~report visible (idenv, env, decl) key v compute =
+  try
+    let ty = compute () in
+    let tys = ty |> GTy.mk |> TyScheme.mk_mono in
+    (* Indent the fallback line so downstream parsers (parse_output.R)
+       don't mistake [fallback: <type>] for a new function header. *)
+    if visible then
+      Format.printf "  fallback: @[<h>%a@]@.@." TyScheme.pp_short tys;
+    report (Fallback tys) ;
+    (Idenv.add key v idenv, Env.add v tys env, decl)
+  with Failure _ -> (idenv, env, decl)
+
+let infer_ast ?fallback ~key visible opts (idenv, env, decl) (ast : Ast.e) =
   let name,v =
     match ast with
     | _,_,_,Ast.Function (name, _, _, _) ->
-        (* When a function-like preprocessor macro shares a name with the
-           file-scope variable it wraps (rlang's
-           [#define r_stop_internal(...) (r_stop_internal)(...)] is the
-           canonical example), [name] is already bound to a mutable global.
-           Registering the Fundef as [Immut] would shadow that binding and
-           cause assignments to the underlying variable to crash with
-           "Cannot assign to an immutable variable". Use [Mut] in that case
-           so the macro's inferred call type is still recorded *and*
-           assignments to the variable elsewhere remain legal. *)
-        let kind =
-          match StrMap.find_opt name idenv with
-          | Some v_existing when MVariable.is_mutable v_existing -> MVariable.Mut
-          | _ -> MVariable.Immut
-        in
-        name, MVariable.create kind (Some name)
+        name, MVariable.create MVariable.Immut (Some name)
     | _ -> failwith "Expected a function definition at the top level."
   in
   let started = Unix.gettimeofday () in
@@ -254,17 +263,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
   let apply_fallback () =
     match fallback with
     | None -> (idenv, env, decl)
-    | Some compute ->
-        (try
-          let ty = compute () in
-          let tys = ty |> GTy.mk |> TyScheme.mk_mono in
-          (* Indent the fallback line so downstream parsers (parse_output.R)
-             don't mistake [fallback: <type>] for a new function header. *)
-          if visible then
-            Format.printf "  fallback: @[<h>%a@]@.@." TyScheme.pp_short tys;
-          report (Fallback tys) ;
-          (StrMap.add name v idenv, Env.add v tys env, decl)
-        with Failure _ -> (idenv, env, decl))
+    | Some compute -> bind_fallback ~report visible (idenv, env, decl) key v compute
   in
   let mlsem_ast = ref None in
   let mlsem_ast_for_dump () =
@@ -291,7 +290,7 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
           let tys = TyScheme.mk vars (GTy.mk typ) in
           print_visible ~debug:opts.debug ~extra:log_timing `Default visible v tys;
           report (Typed { header = `Default ; var = v ; tys }) ;
-          (StrMap.add name v idenv, Env.add v tys env, decl))
+          (Idenv.add key v idenv, Env.add v tys env, decl))
     else
       idenv, env, decl
   with
@@ -360,6 +359,11 @@ let infer_ast ?fallback visible opts (idenv, env, decl) (ast : Ast.e) =
       apply_fallback ()
 
 (** past: the parsed AST *)
+(* The name a top-level definition is bound under. *)
+let binding_name = function
+  | _, PAst.MacroDef (name, _, _) -> PAst.Name.Macro name
+  | past -> id (PAst.top_level_unit_name past)
+
 let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=false) ?(convention=None) ?(skip_if_defined=false) visible_name opts (idenv, env, decl)  past =
   let name = PAst.top_level_unit_name past in
   let visible = visible_name name in
@@ -398,7 +402,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       if opts.debug && visible then
         print_visible ~debug:opts.debug `Define visible v ty;
       report name (Typed { header = `Define ; var = v ; tys = ty }) ;
-      (StrMap.add name v idenv, Env.add v ty env, decl)
+      (Idenv.add (id name) v idenv, Env.add v ty env, decl)
   | _, PAst.TypeDecl (name, ty) ->
       let env =
         register_enum_constants ty
@@ -464,7 +468,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         if opts.debug && visible then
           print_visible ~debug:opts.debug `Default visible v tys;
         report name (Typed { header = `Default ; var = v ; tys }) ;
-        (StrMap.add name v idenv, env, decl)
+        (Idenv.add (id name) v idenv, env, decl)
       end
   | _,PAst.Fundef (ret_ty, name, params, _) when convention=Some(Package.C) ->
     (try
@@ -476,13 +480,13 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
              report name (Typed { header = `DotC ; var = v ; tys })
          | None -> ());
         (idenv, env, decl)
-      end else if is_declaration past && StrMap.mem name idenv then
+      end else if is_declaration past && Idenv.mem (id name) idenv then
         (idenv, env, decl)
       else
         let v = MVariable.create Immut (Some name) in
         print_visible ~debug:opts.debug `DotC visible v ty;
         report name (Typed { header = `DotC ; var = v ; tys = ty }) ;
-        (StrMap.add name v idenv, Env.add v ty env, decl)
+        (Idenv.add (id name) v idenv, Env.add v ty env, decl)
     with Failure msg ->
       if visible then
         Format.printf "%s:@.untypeable: %s@." name msg;
@@ -497,13 +501,13 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
            report name (Typed { header = `SimpleC ; var = v ; tys })
        | None -> ());
       (idenv, env, decl)
-    end else if is_declaration past && StrMap.mem name idenv then
+    end else if is_declaration past && Idenv.mem (id name) idenv then
       (idenv, env, decl)
     else
       let v = MVariable.create Immut (Some name) in
       print_visible ~debug:opts.debug `SimpleC visible v ty;
       report name (Typed { header = `SimpleC ; var = v ; tys = ty }) ;
-      (StrMap.add name v idenv, Env.add v ty env, decl)
+      (Idenv.add (id name) v idenv, Env.add v ty env, decl)
   | _, PAst.Fundef (ret_ty, name, params, _) when is_declaration past ->
     if has_ty_binding name then begin
       (match find_existing_binding name idenv env with
@@ -512,14 +516,22 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
            report name (Typed { header = `Default ; var = v ; tys })
        | None -> ());
       (idenv, env, decl)
-    end else if StrMap.mem name idenv then
+    end else if Idenv.mem (id name) idenv then
       (idenv, env, decl)
     else
       let ty = C_interface.infer_cfun ~typedef_map:decl ret_ty params |> GTy.mk |> TyScheme.mk_mono in
       let v = MVariable.create Immut (Some name) in
       print_visible ~debug:opts.debug `Default visible v ty;
       report name (Typed { header = `Default ; var = v ; tys = ty }) ;
-      (StrMap.add name v idenv, Env.add v ty env, decl)
+      (Idenv.add (id name) v idenv, Env.add v ty env, decl)
+  | _, PAst.MacroDef (name, params, (_, PAst.Seq [])) ->
+    (* A macro whose body could not be parsed: bound at [any -> any] (its
+       parameters are [Ast.Any]), as a declaration would be. *)
+    let ty = C_interface.infer_cfun ~typedef_map:decl Ast.Any params |> GTy.mk |> TyScheme.mk_mono in
+    let v = MVariable.create Immut (Some name) in
+    print_visible ~debug:opts.debug `Default visible v ty;
+    report name (Typed { header = `Default ; var = v ; tys = ty }) ;
+    (Idenv.add (PAst.Name.Macro name) v idenv, Env.add v ty env, decl)
   | _, PAst.Fundef (_, name, _, _) when has_ty_binding name ->
     (match find_existing_binding name idenv env with
      | Some (v, tys) ->
@@ -540,12 +552,30 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
           match past with
           | _, PAst.Fundef (ret_ty, _, params, _) ->
               Some (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
+          | _, PAst.MacroDef (_, params, _) ->
+              Some (fun () -> C_interface.infer_cfun ~typedef_map:decl Ast.Any params)
           | _ -> None
         else None
       in
       match e with
       | _, decl', _, Ast.Noop -> (idenv, env, decl')
-      | _, decl', _, _ -> infer_ast ?fallback visible opts (idenv, env, decl') e
+      | _, decl', _, _ ->
+        infer_ast ?fallback ~key:(binding_name past) visible opts (idenv, env, decl') e
+
+(** Bind the function definition [past] at its declared C signature, as
+    [infer_ast] does when inference fails. For an embedder that enforces its
+    own time limit (TypR) and must still bind a function that ran out of
+    time: left unbound, every caller would report it as an unbound variable,
+    and branches calling it would be pruned. *)
+let bind_c_signature visible (idenv, env, decl) past =
+  match past with
+  | _, (PAst.Fundef (_, name, params, _) | PAst.MacroDef (name, params, _)) ->
+      let ret_ty = match past with _, PAst.Fundef (ret_ty, _, _, _) -> ret_ty | _ -> Ast.Any in
+      let v = MVariable.create MVariable.Immut (Some name) in
+      let report o = if visible then !on_outcome ~name ~elapsed:0. o in
+      bind_fallback ~report visible (idenv, env, decl) (binding_name past) v
+        (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
+  | _ -> (idenv, env, decl)
 
 let run_on_file opts filename idenv env =
   if not (Sys.file_exists filename) then
@@ -561,7 +591,7 @@ let run_on_file opts filename idenv env =
       | Some _ ->
           List.filter
             (function
-              | _, PAst.Fundef (_, name, _, _) -> visible_name name
+              | _, (PAst.Fundef (_, name, _, _) | PAst.MacroDef (name, _, _)) -> visible_name name
               | _, PAst.TypeDecl _ -> false
               | _, PAst.GlobalVar _ -> false
               | _, PAst.Define _ -> false
@@ -729,11 +759,11 @@ let run_on_pasts opts pasts ?entry_points idenv env =
         List.fold_left
           (fun (idenv, env, decl, internal_idenvs) item ->
             match item with
-            | _, PAst.Fundef _ -> (idenv, env, decl, internal_idenvs)
+            | _, (PAst.Fundef _ | PAst.MacroDef _) -> (idenv, env, decl, internal_idenvs)
             | _, PAst.GlobalVar (PAst.Static, _, _) ->
                 let file_idenv =
                   StrMap.find_opt filename internal_idenvs
-                  |> Option.value ~default:StrMap.empty
+                  |> Option.value ~default:Idenv.empty
                 in
                 let file_idenv, env, decl =
                   infer_def ~internal_scope:filename ~force_internal_global:true visible_name opts
@@ -744,7 +774,7 @@ let run_on_pasts opts pasts ?entry_points idenv env =
                 StrSet.mem (PAst.top_level_unit_name item) conflicted_definitions ->
                 let file_idenv =
                   StrMap.find_opt filename internal_idenvs
-                  |> Option.value ~default:StrMap.empty
+                  |> Option.value ~default:Idenv.empty
                 in
                 let file_idenv, env, decl =
                   infer_def ~internal_scope:filename ~force_internal_global:true visible_name opts
@@ -789,18 +819,19 @@ let run_on_pasts opts pasts ?entry_points idenv env =
         let convention = StrMap.find_opt (PAst.top_level_unit_name item) entry_points in
         let file_idenv =
           StrMap.find_opt filename internal_idenvs
-          |> Option.value ~default:StrMap.empty
+          |> Option.value ~default:Idenv.empty
         in
         let idenv_for_file =
-          StrMap.union (fun _ local _global -> Some local) file_idenv idenv
+          Idenv.union (fun _ local _global -> Some local) file_idenv idenv
         in
         let idenv', env, decl =
           infer_def ~internal_scope:filename ~convention visible_name opts
             (idenv_for_file, env, decl) item
         in
         let idenv =
-          match StrMap.find_opt (PAst.top_level_unit_name item) idenv' with
-          | Some v -> StrMap.add (PAst.top_level_unit_name item) v idenv
+          let key = binding_name item in
+          match Idenv.find_opt key idenv' with
+          | Some v -> Idenv.add key v idenv
           | None -> idenv
         in
         (idenv, env, decl))
@@ -969,18 +1000,18 @@ let%test ".ty bindings have highest precedence" =
   let past = (Position.dummy, PAst.Fundef (Ast.Int, "strerror", [], (Position.dummy, PAst.Seq []))) in
   let idenv, env, _ =
     if has_ty_binding "strerror" then
-      (StrMap.empty, Defs.initial_env, Ast.DeclMap.empty)
-    else if is_declaration past && StrMap.mem "strerror" StrMap.empty then
-      (StrMap.empty, Defs.initial_env, Ast.DeclMap.empty)
+      (Idenv.empty, Defs.initial_env, Ast.DeclMap.empty)
+    else if is_declaration past && Idenv.mem (id "strerror") Idenv.empty then
+      (Idenv.empty, Defs.initial_env, Ast.DeclMap.empty)
     else
       let v = MVariable.create Immut (Some "strerror") in
-      (StrMap.add "strerror" v StrMap.empty,
+      (Idenv.add (id "strerror") v Idenv.empty,
        Env.add v tys Defs.initial_env,
        Ast.DeclMap.empty)
   in
-      match find_existing_binding "strerror" idenv env, find_existing_binding "strerror" StrMap.empty Defs.initial_env with
+      match find_existing_binding "strerror" idenv env, find_existing_binding "strerror" Idenv.empty Defs.initial_env with
       | Some (actual_v, actual_tys), Some (expected_v, expected_tys) ->
-        not (StrMap.mem "strerror" idenv)
+        not (Idenv.mem (id "strerror") idenv)
         && Variable.equal actual_v expected_v
         && actual_tys == expected_tys
       | _ -> false
@@ -990,32 +1021,32 @@ let%test "full function overrides declaration" =
   let full_v = MVariable.create Immut (Some "foo") in
   let decl_ty = TyScheme.mk_mono GTy.dyn in
   let full_ty = TyScheme.mk_mono (GTy.mk Rstt.Cenums.void) in
-  let idenv = StrMap.add "foo" decl_v StrMap.empty in
+  let idenv = Idenv.add (id "foo") decl_v Idenv.empty in
   let env = Env.add decl_v decl_ty Env.empty in
   let idenv, env, _ =
-    (StrMap.add "foo" full_v idenv,
+    (Idenv.add (id "foo") full_v idenv,
      Env.add full_v full_ty env,
      Ast.DeclMap.empty)
   in
-  Variable.equal (StrMap.find "foo" idenv) full_v
+  Variable.equal (Idenv.find (id "foo") idenv) full_v
   && Env.find full_v env == full_ty
 
 let%test "declaration does not override existing full function" =
   let full_v = MVariable.create Immut (Some "foo") in
   let full_ty = TyScheme.mk_mono GTy.dyn in
-  let idenv = StrMap.add "foo" full_v StrMap.empty in
+  let idenv = Idenv.add (id "foo") full_v Idenv.empty in
   let env = Env.add full_v full_ty Env.empty in
   let past = (Position.dummy, PAst.Fundef (Ast.Int, "foo", [], (Position.dummy, PAst.Seq []))) in
   let idenv, env, _ =
     if has_ty_binding "foo" then
       (idenv, env, Ast.DeclMap.empty)
-    else if is_declaration past && StrMap.mem "foo" idenv then
+    else if is_declaration past && Idenv.mem (id "foo") idenv then
       (idenv, env, Ast.DeclMap.empty)
     else
       let v = MVariable.create Immut (Some "foo") in
-      (StrMap.add "foo" v idenv,
+      (Idenv.add (id "foo") v idenv,
        Env.add v (TyScheme.mk_mono (GTy.mk Rstt.Cenums.void)) env,
        Ast.DeclMap.empty)
   in
-  Variable.equal (StrMap.find "foo" idenv) full_v
+  Variable.equal (Idenv.find (id "foo") idenv) full_v
   && Env.find full_v env == full_ty

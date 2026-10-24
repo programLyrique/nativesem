@@ -15,7 +15,7 @@ let () =
                       typing = true; debug = false; filter = None; timeout = None;
                       fallback_c_signature = false; call_graph = None;
                       log_times = false } in
-  let idenv = Runner.StrMap.empty in
+  let idenv = Runner.Idenv.empty in
   let env = Defs.initial_env in
   (* Runner.run_on_file already prints the interesting output to stdout via
      Format/Printf, which dune will capture in the rules using with-stdout-to. *)

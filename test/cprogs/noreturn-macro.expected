@@ -1,0 +1,24 @@
+r_peek_frame: () --> any_sexp
+
+r_stop_internal: () -> empty
+
+r_stop_unreachable: () -> empty
+
+init_stop_internal: () -> ()
+
+stop_after_check: ∀'a. ([c(1..) & 'a] -> c(1..) & 'a) & ([c_int_na \ c(1..) & 'a] -> empty)
+
+stop_unreachable: ([c_false] -> c_true) & ([c_int_na \ c_bool] -> empty) & ([c_true] -> c(2))
+
+die: [c_string] --> empty
+
+die2: [c_string] --> empty
+
+die3: [c_string] --> empty
+
+die_after_check: ∀'a. ([c(1..) & 'a] -> c(1..) & 'a) & ([c_int_na \ c(1..) & 'a] -> empty)
+
+count_fmt: [c_string] -> c_true
+
+call_count_fmt: () -> c_true
+

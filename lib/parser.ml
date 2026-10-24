@@ -40,6 +40,11 @@ let process_res res = res
 
 let empty_decl_prefix_macros = [
   "CURL_EXTERN";
+]
+
+(* Macros standing for [_Noreturn]: rewritten to it (padded to the same width)
+   rather than blanked, so the parser knows the function never returns. *)
+let noreturn_prefix_macros = [
   "r_no_return";
 ]
 
@@ -115,6 +120,14 @@ let sanitize_empty_decl_prefix_macros source =
       | Some token when not (preceded_by_define source i || on_directive_line source i) ->
           let token_len = String.length token in
           Buffer.add_string buf (String.make token_len ' ');
+          loop (i + token_len)
+      | _ ->
+      match List.find_opt (token_matches_at source i) noreturn_prefix_macros with
+      | Some token when not (preceded_by_define source i || on_directive_line source i) ->
+          let kw = "_Noreturn" in
+          let token_len = String.length token in
+          Buffer.add_string buf kw;
+          Buffer.add_string buf (String.make (max 0 (token_len - String.length kw)) ' ');
           loop (i + token_len)
       | _ ->
           Buffer.add_char buf source.[i];
@@ -255,7 +268,7 @@ type init_plan =
 
 let rec placeholder_const_of_ctype ty =
   match ty with
-  | Ast.Void -> A.CNull
+  | Ast.Void | Ast.NoReturn -> A.CNull
   | Ast.Int -> A.CNa
   | Ast.Float -> A.CFloat 0.
   | Ast.Char -> A.CChar '\000'
@@ -486,8 +499,27 @@ and aux_type_spec (type_spec : type_specifier)  =
       Ast.Any
 
 and aux_decl_spec decl_spec = 
-  let (_, type_spec, _) = decl_spec in
-  aux_type_spec type_spec
+  let (before, type_spec, after) = decl_spec in
+  let ty = aux_type_spec type_spec in
+  if ty = Ast.Void && List.exists is_noreturn_modifier (before @ after) then Ast.NoReturn
+  else ty
+
+(* [_Noreturn], [noreturn] or [__attribute__((noreturn))] (also spelled
+   [__noreturn__]) among a declaration's modifiers. *)
+and is_noreturn_modifier = function
+  | `Type_qual (`X__Nore _ | `Nore _) -> true
+  | `Attr_spec (_, _, ((_, args, _) : argument_list), _) ->
+      let rec is_noreturn_id (e : expression) =
+        match e with
+        | `Choice_cond_exp (`Id (_, ("noreturn" | "__noreturn__"))) -> true
+        | `Choice_cond_exp (`Paren_exp (_, `Exp e, _)) -> is_noreturn_id e
+        | _ -> false
+      in
+      let names_noreturn = function `Exp e -> is_noreturn_id e | `Comp_stmt _ -> false in
+      (match args with
+       | None -> false
+       | Some (first, rest) -> List.exists names_noreturn (first :: List.map snd rest))
+  | _ -> false
 
 and aux_global_linkage decl_spec =
   let before, _, after = decl_spec in
@@ -589,8 +621,13 @@ and aux_type_declarator (td : type_declarator)
       (0, "__prim__", None)
 
 and aux_type_definition ((_, _, type_def_ty, (first_decl, rest_decls), _, _) : type_definition) =
-  let (_, type_spec, _) = type_def_ty in
+  let (before, type_spec, after) = type_def_ty in
   let base_ty = aux_type_spec type_spec in
+  (* [typedef _Noreturn void ( *T)(...)] (rlang's [r_stop_internal_t]). *)
+  let base_ty =
+    if base_ty = Ast.Void
+       && List.exists (fun q -> is_noreturn_modifier (`Type_qual q)) (before @ after)
+    then Ast.NoReturn else base_ty in
   let aux_one td =
     let (ptr_level, name, fp) = aux_type_declarator td in
     let ty = match fp with
@@ -1039,7 +1076,14 @@ and aux_call_expression (call: call_expression) =
   let func_ast = aux_expression expr in
   let pos1,_ = func_ast in 
   let pos2, args_ast = aux_argument_list args in
-  (Position.join pos1 pos2, A.Call (func_ast, args_ast))
+  let pos = Position.join pos1 pos2 in
+  match expr with
+  | `Choice_cond_exp (`Id (_, name)) when Preprocessor.is_function_macro name ->
+      (* [NAME(...)] with [NAME] a function-like macro: an expansion. A
+         parenthesized callee [(NAME)(...)] is a [Paren_exp], hence a call of
+         the variable or function [NAME], as in C. *)
+      (pos, A.MacroCall (name, args_ast))
+  | _ -> (pos, A.Call (func_ast, args_ast))
 and aux_argument (arg: anon_choice_exp_f079e30) =
   match arg with 
   | `Exp e -> aux_expression e
@@ -1543,7 +1587,7 @@ and aux_top_level_item_non_preproc defines (item : top_level_item) =
         match decl with
         | `Opt_ms_call_modi_decl_decl_opt_gnu_asm_exp (_, declr, _) ->
             begin match declr with
-            | `Func_decl_decl (name_decl, param_list, _, _) ->
+            | `Func_decl_decl (name_decl, param_list, _, attrs) ->
                 if is_parenthesized_pointer_declarator name_decl then
                   None
                 else begin match (try Some (aux_decl_name name_decl) with _ -> None) with
@@ -1551,6 +1595,12 @@ and aux_top_level_item_non_preproc defines (item : top_level_item) =
                 | Some (level, name) ->
                     (try
                       let params = aux_extract_params param_list in
+                      (* [void exit(int) __attribute__((noreturn));] (glibc):
+                         the attribute follows the declarator. *)
+                      let base_ty =
+                        if level = 0 && base_ty = Ast.Void
+                           && List.exists (fun a -> is_noreturn_modifier (`Attr_spec a)) attrs
+                        then Ast.NoReturn else base_ty in
                       let ret_ty = Ast.build_ptr level base_ty in
                       Some (Mlsem.Common.Position.dummy,
                             A.Fundef (ret_ty, name, params,
@@ -1828,7 +1878,7 @@ let%test "variadic declaration emits a Fundef ending in Vararg" =
            | _ -> false)
       | _ -> false)
 
-let%test "variadic function-like macro emits a Fundef ending in Vararg" =
+let%test "variadic function-like macro emits a MacroDef ending in Vararg" =
   let prev = !warn_unsupported in
   Fun.protect
     ~finally:(fun () -> set_warn_unsupported prev)
@@ -1843,12 +1893,54 @@ let%test "variadic function-like macro emits a Fundef ending in Vararg" =
       | tops ->
           List.exists
             (function
-              | _, A.Fundef (_, "wrap", params, _) ->
+              | _, A.MacroDef ("wrap", params, _) ->
                   (match List.rev params with
                    | A.Vararg :: _ -> true
                    | _ -> false)
               | _ -> false)
             tops)
+
+(* The calls in the body of [fname] among [tops], as [`Macro]/[`Call] of the
+   callee's name. *)
+let calls_in fname tops =
+  let rec calls (_, e) =
+    match e with
+    | A.MacroCall (n, args) -> (`Macro, n) :: List.concat_map calls args
+    | A.Call ((_, A.Id n), args) -> (`Call, n) :: List.concat_map calls args
+    | A.Call (f, args) -> calls f @ List.concat_map calls args
+    | A.Return (Some e) | A.Unop (_, e) -> calls e
+    | A.Binop (_, (e1, e2)) -> calls e1 @ calls e2
+    | A.Block es | A.Seq es -> List.concat_map calls es
+    | _ -> []
+  in
+  List.concat_map (function
+      | _, (A.Fundef (_, n, _, body) | A.MacroDef (n, _, body)) when n = fname -> calls body
+      | _ -> []) tops
+
+let%test "a macro call is a MacroCall, a parenthesized one a Call" =
+  let res =
+    parse_string
+      "int f(int x, int y);\n\
+       #define f(x) (x)\n\
+       int g(int x) { return f(x) + (f)(x, 1); }\n"
+  in
+  calls_in "g" (to_ast res) = [ (`Macro, "f") ; (`Call, "f") ]
+
+let%test "#undef ends a function-like macro" =
+  let prev = !warn_unsupported in
+  Fun.protect
+    ~finally:(fun () -> set_warn_unsupported prev)
+    (fun () ->
+      set_warn_unsupported false;
+      let res =
+        parse_string
+          "#define m(x) (x)\n\
+           int a(int x) { return m(x); }\n\
+           #undef m\n\
+           int b(int x) { return m(x); }\n"
+      in
+      let tops = to_ast res in
+      calls_in "a" tops = [ (`Macro, "m") ] && calls_in "b" tops = [ (`Call, "m") ])
 
 let%test "quoted include is ignored instead of crashing" =
   let res =

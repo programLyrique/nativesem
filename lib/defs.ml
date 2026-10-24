@@ -518,6 +518,11 @@ module BuiltinVar = struct
       ("__LINE__", Cint.any);
       ("__DATE__", Cptr.string);
       ("__TIME__", Cptr.string);
+      (* The extra arguments of a variadic function-like macro, as its body
+         forwards them ([(r_stop_internal)(..., __VA_ARGS__)]). A macro is
+         typed as a function whose variadic domain is [any] (see
+         [Preprocessor.parse_preproc_function_def]), so they are [any]. *)
+      ("__VA_ARGS__", Ty.any);
     ]
 
 

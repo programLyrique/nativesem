@@ -31,6 +31,11 @@ type const =
 
  type top_level_unit' =
   | Fundef of Ast.ctype * string * param list * e
+  | MacroDef of string * param list * e
+    (** A function-like macro, [#define NAME(params) body], typed as a
+        function whose parameters and result are [Ast.Any]. It lives in its
+        own namespace ([Name.Macro]): C keeps a macro apart from a variable
+        or function of the same name, which only a [MacroCall] reaches. *)
   | TypeDecl of string * Ast.ctype
     (** Binds a named type in the decl map. Covers struct/union/enum
         declarations (payload is the corresponding [Ast.Struct]/[Ast.Union]/
@@ -56,6 +61,11 @@ type const =
   | VarDeclare of Ast.ctype * e
   | VarAssign of e * e
   | Call of e * e list 
+  | MacroCall of string * e list
+    (** [NAME(args)] where [NAME] is a function-like macro defined before
+        this point: an expansion of the macro, not a call of a variable or
+        function of the same name. Emitted by the parser, which alone sees
+        whether the callee was parenthesized: [(NAME)(args)] is a [Call]. *)
   | If of e * e * e option
   | Ite of e * e * e (* For ternary conditions *)
   | While of e * e
@@ -95,6 +105,7 @@ type const =
 let top_level_unit_name top =
   match top with
   | _, Fundef (_, name, _, _) -> name
+  | _, MacroDef (name, _, _) -> name
   | _, TypeDecl (name, _) -> name
   | _, GlobalVar (_, name, _) -> name
   | _, Define (name, _) -> name
@@ -127,6 +138,7 @@ let rec bv_e in_lhs_assign (_,e) =
   | FieldAccess (e, _) -> bv_e in_lhs_assign e
   | VarAssign (e,_) -> bv_e true e (* Gross overapproximation! Left side of assignment, we want to collect identifiers in the lhs. Args will be detected as been "assigned". *)
   | Call (f, args) -> List.fold_left (fun acc arg -> StrSet.union acc (bv_e in_lhs_assign arg)) (bv_e  false f) args
+  | MacroCall (_, args) -> List.fold_left (fun acc arg -> StrSet.union acc (bv_e in_lhs_assign arg)) StrSet.empty args
   | If (cond, then_, else_) -> 
       let acc = bv_e in_lhs_assign cond |> StrSet.union (bv_e in_lhs_assign then_) in
       begin match else_ with 
@@ -190,8 +202,19 @@ let resolve_alias name =
   in
   loop StrSet.empty name
 
+(** The namespaces a name is bound in. C keeps a function-like macro apart
+    from an ordinary identifier (variable, function, enum constant) of the same
+    name: rlang has both a function pointer [r_stop_internal] and a macro
+    [r_stop_internal(...)] that calls it as [(r_stop_internal)(...)]. *)
+module Name = struct
+  type t = Ident of string | Macro of string
+  let compare = compare
+  let to_string = function Ident s | Macro s -> s
+end
+module NameMap = Map.Make (Name)
+
 (** The identifier environment is a stack of scope frames, innermost first.
-    Each frame is a [Variable.t StrMap.t] mapping C identifiers to their
+    Each frame is a [Variable.t NameMap.t] mapping C identifiers to their
     [Variable.t]. Lookup walks frames head-to-tail (inner -> outer), so an
     inner declaration shadows outer bindings (parameters, globals, .ty
     definitions). The outermost frame holds globals and file-scope names
@@ -199,7 +222,7 @@ let resolve_alias name =
     on entry to a [Block] (and to a parameter scope at function entry) and
     fall out naturally when [transform]/[aux_e] returns. *)
 type env = {
-  id: Variable.t StrMap.t list;
+  id: Variable.t NameMap.t list;
   decl: Ast.ctype Ast.DeclMap.t;
 }
 
@@ -270,15 +293,15 @@ let rec has_struct_type ty =
    builtin var, .ty bindings. Returns [Some v] if [str] resolves to a
    concrete binding, [None] if it would fall through to the fresh-variable
    case. *)
-let rec lookup_in_frames str = function
+let rec lookup_in_frames name = function
   | [] -> None
   | frame :: rest ->
-      (match StrMap.find_opt str frame with
+      (match NameMap.find_opt name frame with
        | Some _ as r -> r
-       | None -> lookup_in_frames str rest)
+       | None -> lookup_in_frames name rest)
 
 let lookup_binding env str =
-  match lookup_in_frames str env.id with
+  match lookup_in_frames (Name.Ident str) env.id with
   | Some _ as r -> r
   | None ->
     (match Defs.BuiltinOp.find_builtin str with
@@ -302,7 +325,15 @@ let is_block_local env str =
   | [] | [_] -> false
   | frames ->
       let upper = List.filteri (fun i _ -> i < List.length frames - 1) frames in
-      Option.is_some (lookup_in_frames str upper)
+      Option.is_some (lookup_in_frames (Name.Ident str) upper)
+
+(* Number of named parameters of each variadic definition translated so far
+   (C functions [f(const char *fmt, ...)] and variadic macros alike). A
+   definition is typed from its named parameters only, so a call passing more
+   arguments has them evaluated but not passed (see [process_call]). Callees
+   are typed before their callers, so the entry exists when a call is
+   translated. *)
+let variadic_arity : (Name.t, int) Hashtbl.t = Hashtbl.create 64
 
 let var env str =
   (* Resolve identifier-alias macros ([#define NAME TARGET]) before looking
@@ -324,15 +355,15 @@ let var env str =
 
 (** Push an empty scope frame on top of the env. The previous frames remain
     reachable through [lookup_binding] for shadowing-fall-through. *)
-let push_scope env = {env with id = StrMap.empty :: env.id}
+let push_scope env = {env with id = NameMap.empty :: env.id}
 
 (** Bind [str] to a fresh [Variable.t] in the topmost scope frame of [env].
     Returns the updated env and the new variable. *)
 let add_var_top env str =
   let v = MVariable.create MVariable.Mut (Some str) in
   let id = match env.id with
-    | [] -> [StrMap.singleton str v]
-    | top :: rest -> StrMap.add str v top :: rest
+    | [] -> [NameMap.singleton (Name.Ident str) v]
+    | top :: rest -> NameMap.add (Name.Ident str) v top :: rest
   in
   ({env with id}, v)
 
@@ -432,6 +463,13 @@ let rec aux_e env (pos,e) =
   | VarAssign (_,_) -> failwith ("Unexpected left-hand side in assignment. Got: " ^ show_e (pos,e))
   | FieldAccess (e, field) -> Ast.FieldRead (aux_e env e, field)
   | Call (f, args) -> process_call env f args
+  | MacroCall (name, args) ->
+      (* The expansion of a macro bound in the [Name.Macro] namespace. One
+         that is not bound (its definition was not reached, or failed without
+         a fallback) is called like a function of that name. *)
+      (match lookup_in_frames (Name.Macro name) env.id with
+       | Some v -> call_variadic_aware env (Name.Macro name) (fresh_e env (Ast.Id v)) args
+       | None -> process_call env (pos, Id name) args)
   | If (cond, then_, else_) -> 
       Ast.If (aux_e env cond, aux_e env then_, Option.map (aux_e env) else_)
   | Ite (cond, then_, else_) -> 
@@ -686,12 +724,38 @@ and process_call env f args =
              | Some sxname -> (fst first, Id sxname))
       in
       Ast.Call (aux_e env f, List.map (aux_e env) (first :: rest))
+  | (_, Id fname), _ -> call_variadic_aware env (Name.Ident fname) (aux_e env f) args
   | _ -> Ast.Call (aux_e env f, List.map (aux_e env) args) in
   e
+(* A call of the definition bound as [key], whose callee is already
+   translated. [args] beyond the named parameters of a variadic definition are
+   evaluated before the call but not passed: the definition is typed from its
+   named parameters only (see [variadic_arity]). *)
+and call_variadic_aware env key callee args =
+  match Hashtbl.find_opt variadic_arity key with
+  | Some n when List.length args > n ->
+      let passed = List.filteri (fun i _ -> i < n) args in
+      let extra = List.filteri (fun i _ -> i >= n) args in
+      let call = fresh_e env (Ast.Call (callee, List.map (aux_e env) passed)) in
+      (match List.fold_right (fun a acc -> fresh_e env (Ast.Seq (aux_e env a, acc))) extra call with
+       | (_, _, _, e) -> e)
+  | _ -> Ast.Call (callee, List.map (aux_e env) args)
 and transform env (pos, topl_unit) = 
   let eid = Eid.unique_with_pos pos in
   let (decl, e) = match topl_unit with 
   | Fundef (ret_ty, name, params, body) ->
+    translate_def env (Name.Ident name) ret_ty name params body
+  | MacroDef (name, params, body) ->
+    translate_def env (Name.Macro name) Ast.Any name params body
+  | TypeDecl (name, ty) -> (Ast.DeclMap.add name ty env.decl, Ast.Noop)
+  | GlobalVar _ -> (env.decl, Ast.Noop) (* handled by infer_def directly *)
+  | Define (_name, _value) -> (env.decl, Ast.Noop)
+  | Include _ -> (env.decl, Ast.Noop) (* handled by infer_def directly *)
+  in
+  (eid, decl, Ast.VarMap.empty, e)
+(* A function or macro definition, recorded under [key] in [variadic_arity]
+   when variadic. *)
+and translate_def env key ret_ty name params body =
     (* Bind every parameter into the topmost scope frame. The body is emitted
        by the parser as a [Block] for actual definitions and as [Seq []] for
        forward declarations; treat [Block] specially so the function body's
@@ -710,6 +774,9 @@ and transform env (pos, topl_unit) =
       | _, Block stmts -> aux_block (push_scope env) stmts
       | _ -> aux_e env body
     in
+    if List.mem Vararg params then
+      Hashtbl.replace variadic_arity key
+        (List.length (List.filter (function Param _ -> true | Vararg -> false) params));
     let params =
       List.filter_map (function
         | Param (ty, name) -> Some (resolve_ctype env.decl ty, var env name)
@@ -717,12 +784,6 @@ and transform env (pos, topl_unit) =
     in
     let ret_ty = resolve_ctype env.decl ret_ty in
     (env.decl, Ast.Function (name, ret_ty, params, e))
-  | TypeDecl (name, ty) -> (Ast.DeclMap.add name ty env.decl, Ast.Noop)
-  | GlobalVar _ -> (env.decl, Ast.Noop) (* handled by infer_def directly *)
-  | Define (_name, _value) -> (env.decl, Ast.Noop)
-  | Include _ -> (env.decl, Ast.Noop) (* handled by infer_def directly *)
-  in
-  (eid, decl, Ast.VarMap.empty, e)
 
 let map f e = 
   let rec aux (pos, e) = 
@@ -734,6 +795,7 @@ let map f e =
     | VarAssign (e1, e2) -> VarAssign (aux e1, aux e2)
     | FieldAccess (e, field) -> FieldAccess (aux e, field)
     | Call (f, args) -> Call (aux f, List.map aux args)
+    | MacroCall (name, args) -> MacroCall (name, List.map aux args)
     | If (cond, then_, else_) -> 
         If (aux cond, aux then_, Option.map aux else_)
     | Ite (cond, then_, else_) ->
@@ -790,7 +852,7 @@ let rec extract_calls_from_expr ?(fun_names=StrSet.empty) (_pos, e') =
   | FieldAccess (e, _) -> extract e
   | VarDeclare (_, e) -> extract e
   | VarAssign (e1, e2) -> extract e1 @ extract e2
-  | Call ((_, Id fname), args) ->
+  | Call ((_, Id fname), args) | MacroCall (fname, args) ->
       fname :: List.concat_map extract_arg args
   | Call (f, args) ->
       extract f @ List.concat_map extract_arg args

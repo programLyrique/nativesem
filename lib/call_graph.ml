@@ -253,7 +253,7 @@ end
 let collect_fun_names defs_list =
   let rec collect_unit acc (_pos, unit') =
     match unit' with
-    | PAst.Fundef (_, fname, _, _) -> PAst.StrSet.add fname acc
+    | PAst.Fundef (_, fname, _, _) | PAst.MacroDef (fname, _, _) -> PAst.StrSet.add fname acc
     | PAst.Include items -> List.fold_left collect_unit acc items
     | _ -> acc
   in
@@ -264,8 +264,10 @@ let collect_fun_names defs_list =
 (** Build a call graph from a single PAst top-level unit *)
 let rec of_past_unit ~fun_names _t (_pos, unit') =
   match unit' with
-  | PAst.Fundef (_, fname, _params, body) ->
-      (* Always register the defining function as a node, even if its body has
+  | PAst.Fundef (_, fname, _, body) | PAst.MacroDef (fname, _, body) ->
+      (* A macro and a function of the same name share a node: the graph only
+         orders definitions, and [topo_sort] schedules both.
+         Always register the defining function as a node, even if its body has
          no callees in [fun_names]. Otherwise leaf functions (e.g. platform
          stubs returning a constant) would be dropped by [keep_reachable]
          even when they are entry points themselves. *)
@@ -515,8 +517,12 @@ let to_dot
 
 let topo_sort pasts call_graph =
   let past_map = Hashtbl.create (List.length pasts) in
+  (* Function-like macros, apart: one may share its name with a function,
+     and both must be typed. *)
+  let macro_map = Hashtbl.create 16 in
   List.iter (fun (filename, past) ->
     match past with
+      | _, PAst.MacroDef (name, _, _) -> Hashtbl.replace macro_map name (filename, past)
       | _, PAst.Fundef (_, name, _, (_, PAst.Seq [])) ->
           (* Declaration (empty body) — only register if no entry exists yet *)
           if not (Hashtbl.mem past_map name) then
@@ -530,7 +536,11 @@ let topo_sort pasts call_graph =
       | _, PAst.Include _ -> ()
   ) pasts;
   let sorted_names = Callgraph.topo_sort_names call_graph in
-  List.filter_map (fun name -> Hashtbl.find_opt past_map name) sorted_names
+  (* For a name with both, the function first: a macro over a function of the
+     same name ([#define f(x) (f)(x, 0)]) calls it. *)
+  List.concat_map (fun name ->
+      List.filter_map (fun tbl -> Hashtbl.find_opt tbl name) [ past_map ; macro_map ])
+    sorted_names
 
 
 (* Inline tests *)

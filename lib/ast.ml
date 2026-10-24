@@ -45,6 +45,10 @@ type ctype =
     types ordinary C functions so that the [pfun] projection accepts the
     value as callable. *)
  | FunPtr of ctype * ctype list * bool
+ (* The result type of a function that never returns ([_Noreturn],
+    [__attribute__((noreturn))], rlang's [r_no_return]): typed [empty], like
+    [Rf_error], so the paths that call it are known to stop there. *)
+ | NoReturn
  (* SEXPs *)
  | SEXP
  | Any (* Do we actually need that?*)
@@ -166,6 +170,7 @@ let typeof_ctype ct =
   let rec aux resolving ct =
     match ct with
     | Void -> Cenums.void
+    | NoReturn -> Ty.empty
     | Int -> Cint.any_na
     | Float -> Cenums.double
     | Char -> Cenums.char

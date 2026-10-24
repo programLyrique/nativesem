@@ -30,7 +30,7 @@ let main ~mlsem_recording opts include_dirs path =
   let gcc_dirs = R_c_typing.Utils.detect_gcc_include_dirs () in
   R_c_typing.Parser.set_include_dirs
     (include_dirs @ env_dirs @ gcc_dirs @ R_c_typing.Parser.default_include_dirs);
-  let idenv = Runner.StrMap.empty in
+  let idenv = Runner.Idenv.empty in
   let env = Defs.initial_env in
   if not (Sys.file_exists path) then
     failwith (Printf.sprintf "Path not found: %s" path);
