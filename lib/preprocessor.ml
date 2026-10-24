@@ -382,13 +382,31 @@ let parse_preproc_define (_callbacks : parser_callbacks) (prepoc : preproc_def) 
         end
       end
 
-let system_include callbacks (_loc, path) =
-  let relative = String.sub path 1 (String.length path - 2) in
+(* Directories of the system headers being processed, innermost first. A
+   quoted [#include "x.h"] inside a system header names a file next to it
+   (curl.h pulls in "multi.h", "urlapi.h", ... this way); one in the package's
+   own sources is not followed, since package mode parses every header of
+   [src/] anyway. *)
+let current_header_dirs : string list ref = ref []
+
+let rec system_include callbacks (_loc, path) =
+  system_include_relative callbacks (String.sub path 1 (String.length path - 2))
+
+and system_include_relative callbacks relative =
   match resolve_header relative with
   | None ->
       Printf.eprintf "Could not find system header: %s\n" relative;
       []
-  | Some full_path ->
+  | Some full_path -> process_system_header callbacks full_path
+
+(* A quoted include inside a system header: the including header's directory
+   first, then the system search path, as a C compiler does. *)
+and quoted_include_in_system_header callbacks dir relative =
+  let next_to = Filename.concat dir relative in
+  if Sys.file_exists next_to then process_system_header callbacks next_to
+  else system_include_relative callbacks relative
+
+and process_system_header callbacks full_path =
       if Hashtbl.mem processed_headers full_path then
         []
       else begin
@@ -415,7 +433,13 @@ let system_include callbacks (_loc, path) =
         match cst.program with
         | None -> []
         | Some tree ->
-          [Mlsem.Common.Position.dummy, A.Include (callbacks.parse_translation_unit tree)]
+          current_header_dirs := Filename.dirname full_path :: !current_header_dirs;
+          let items =
+            Fun.protect
+              ~finally:(fun () -> current_header_dirs := List.tl !current_header_dirs)
+              (fun () -> callbacks.parse_translation_unit tree)
+          in
+          [Mlsem.Common.Position.dummy, A.Include items]
       end
 
 let fold_top_level_items aux_item defines items =
@@ -538,6 +562,14 @@ and top_level_item_dispatch ~parser_callbacks ~top_level_item ~top_level_block_i
        | Some item -> [item])
   | `Prep_incl (_, `System_lib_str path, _) ->
       (defines, system_include parser_callbacks path)
+  | `Prep_incl (_, `Str_lit (_, parts, _), _) when !current_header_dirs <> [] ->
+      let relative =
+        parts |> List.map (function
+          | `Imm_tok_prec_p1_pat_c7f65b4 tok | `Esc_seq tok -> U.token_to_string tok)
+        |> String.concat ""
+      in
+      (defines,
+       quoted_include_in_system_header parser_callbacks (List.hd !current_header_dirs) relative)
   | `Prep_incl include_item ->
       if !warn_unsupported then begin
         Printf.printf "Not supported yet: non-system include\n";

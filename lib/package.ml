@@ -113,6 +113,8 @@ let find_native_calls path =
   let prefix = find_prefix () in
   find_calls prefix
 
+let windows_only_dirs = ["win32"; "win64"; "windows"]
+
 let get_c_files path =
   let src_dir = Filename.concat path "src" in
   if not (Sys.file_exists src_dir && Sys.is_directory src_dir) then []
@@ -126,7 +128,12 @@ let get_c_files path =
         let entries = Sys.readdir dir in
         Array.fold_left (fun acc entry ->
           let entry_path = Filename.concat dir entry in
-          if Sys.is_directory entry_path then walk entry_path acc
+          if Sys.is_directory entry_path then
+            (* Windows-only code (askpass's [src/win32/], sys's
+               [src/win32/exec.c]) is only built on Windows, by Makevars.win;
+               analysing it on Linux reports Windows APIs as unbound. *)
+            (if List.mem (String.lowercase_ascii entry) windows_only_dirs then acc
+             else walk entry_path acc)
           else if Filename.check_suffix entry ".c" || Filename.check_suffix entry ".h" then
             entry_path :: acc
           else acc
@@ -142,3 +149,15 @@ let get_c_files path =
       List.partition (fun f -> Filename.check_suffix f ".h") all_files
     in
     headers @ sources
+
+let%test "get_c_files skips Windows-only subdirectories" =
+  let root = Filename.temp_dir "rctyping-pkg" "" in
+  let touch path = close_out (open_out path) in
+  let src = Filename.concat root "src" in
+  Sys.mkdir src 0o755;
+  List.iter (fun d -> Sys.mkdir (Filename.concat src d) 0o755) ["win32"; "Windows"; "vendor"];
+  List.iter touch [ Filename.concat src "a.c";
+                    Filename.concat (Filename.concat src "win32") "w.c";
+                    Filename.concat (Filename.concat src "Windows") "x.c";
+                    Filename.concat (Filename.concat src "vendor") "v.c" ];
+  get_c_files root |> List.map Filename.basename |> List.sort compare = ["a.c"; "v.c"]

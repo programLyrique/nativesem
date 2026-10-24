@@ -59,6 +59,11 @@ strerror: [any] --> c_string
 strsignal: [any] --> c_string
 strdup: [any] --> c_string
 
+// POSIX terminal input. Declared in <unistd.h> under glibc feature-test
+// guards (__USE_MISC) the preprocessor does not evaluate, so it is spelled
+// out here. NULL on error.
+getpass: [c_string] --> c_string | c_null
+
 // POSIX stdio
 stdin: c_ptr
 stdout: c_ptr

@@ -69,15 +69,40 @@ let preceded_by_define source i =
       | ' ' | '\t' -> skip_ws (j - 1)
       | _ -> j
   in
-  let directive = "#define" in
+  (* [#define NAME], also with blanks between [#] and [define] as in
+     [#  define CURL_EXTERN] (curl.h): blanking [NAME] there would leave an
+     empty [#  define] and a parse error. *)
+  let directive = "define" in
   let dlen = String.length directive in
   let after_ws = skip_ws (i - 1) in
   let end_of_directive = after_ws + 1 in
   let start_of_directive = end_of_directive - dlen in
   start_of_directive >= 0
   && String.sub source start_of_directive dlen = directive
-  && (start_of_directive = 0
-      || (let c = source.[start_of_directive - 1] in c = '\n' || c = ' ' || c = '\t'))
+  && (let hash = skip_ws (start_of_directive - 1) in
+      hash >= 0 && source.[hash] = '#')
+
+(* True iff position [i] is on a preprocessor directive line ([#ifndef FOO],
+   [#undef FOO], a continuation line of a multi-line [#if]): blanking a macro
+   name there would leave an empty directive. *)
+let on_directive_line source i =
+  let rec line_start j = if j > 0 && source.[j - 1] <> '\n' then line_start (j - 1) else j in
+  (* The previous physical line, if it ends with a backslash continuation. *)
+  let continued_from start =
+    if start < 2 then None
+    else
+      let rec last_non_blank j = if j >= 0 && (source.[j] = ' ' || source.[j] = '\t' || source.[j] = '\r') then last_non_blank (j - 1) else j in
+      let k = last_non_blank (start - 2) in
+      if k >= 0 && source.[k] = '\\' then Some (line_start k) else None
+  in
+  let rec logical_start start =
+    match continued_from start with Some s -> logical_start s | None -> start
+  in
+  let start = logical_start (line_start i) in
+  let len = String.length source in
+  let rec first j = if j < len && (source.[j] = ' ' || source.[j] = '\t') then first (j + 1) else j in
+  let f = first start in
+  f < len && source.[f] = '#'
 
 let sanitize_empty_decl_prefix_macros source =
   let len = String.length source in
@@ -87,7 +112,7 @@ let sanitize_empty_decl_prefix_macros source =
       ()
     else
       match List.find_opt (token_matches_at source i) empty_decl_prefix_macros with
-      | Some token when not (preceded_by_define source i) ->
+      | Some token when not (preceded_by_define source i || on_directive_line source i) ->
           let token_len = String.length token in
           Buffer.add_string buf (String.make token_len ' ');
           loop (i + token_len)
@@ -98,18 +123,86 @@ let sanitize_empty_decl_prefix_macros source =
   loop 0;
   Buffer.contents buf
 
+(* Index of the first occurrence of [sub] in [s]. *)
+let find_sub s sub =
+  let ls = String.length s and lsub = String.length sub in
+  let rec go i =
+    if i + lsub > ls then None
+    else if String.sub s i lsub = sub then Some i
+    else go (i + 1)
+  in
+  go 0
+
+(* [Some (directive, rest)] for a preprocessor line: [#  ifdef  FOO // x]
+   gives [("ifdef", "FOO")]; comments after the directive are dropped. *)
+let directive_of_line line =
+  let line = String.trim line in
+  if String.length line = 0 || line.[0] <> '#' then None
+  else
+    let body = String.trim (String.sub line 1 (String.length line - 1)) in
+    let cut_at sep s =
+      match find_sub s sep with Some i -> String.sub s 0 i | None -> s in
+    let body = body |> cut_at "//" |> cut_at "/*" |> String.trim in
+    let n = String.length body in
+    let rec word_end i = if i < n && (match body.[i] with 'a'..'z' -> true | _ -> false) then word_end (i + 1) else i in
+    let i = word_end 0 in
+    Some (String.sub body 0 i, String.trim (String.sub body i (n - i)))
+
+(* Blank out the C++-only blocks [#ifdef __cplusplus ... #endif] (also
+   [#if defined(__cplusplus)]) that have no [#else]/[#elif]. NativeSem only
+   reads C, where [__cplusplus] is never defined, and tree-sitter parses
+   before any preprocessing: the [extern "C" {] such a block opens near the top
+   of most library headers, closed by another such block at the end, reads as
+   an unbalanced brace and the rest of the header is dropped (all of curl.h).
+   Lines are replaced by blanks so positions are unchanged. *)
+let blank_cplusplus_blocks source =
+  let lines = Array.of_list (String.split_on_char '\n' source) in
+  let n = Array.length lines in
+  let is_cplusplus_if = function
+    | Some ("ifdef", "__cplusplus") -> true
+    | Some ("if", ("defined(__cplusplus)" | "defined (__cplusplus)" | "defined __cplusplus")) -> true
+    | _ -> false
+  in
+  (* Index of the [#endif] closing the block opened at [start], or [None] if
+     the block has an [#else]/[#elif] or is not closed. *)
+  let block_end start =
+    let rec go i depth =
+      if i >= n then None
+      else match directive_of_line lines.(i) with
+        | Some (("if" | "ifdef" | "ifndef"), _) -> go (i + 1) (depth + 1)
+        | Some ("endif", _) -> if depth = 0 then Some i else go (i + 1) (depth - 1)
+        | Some (("else" | "elif" | "elifdef" | "elifndef"), _) when depth = 0 -> None
+        | _ -> go (i + 1) depth
+    in
+    go (start + 1) 0
+  in
+  let rec scan i =
+    if i < n then
+      if is_cplusplus_if (directive_of_line lines.(i)) then
+        match block_end i with
+        | Some j ->
+            for k = i to j do lines.(k) <- String.make (String.length lines.(k)) ' ' done;
+            scan (j + 1)
+        | None -> scan (i + 1)
+      else scan (i + 1)
+  in
+  scan 0;
+  String.concat "\n" (Array.to_list lines)
+
+let sanitize source = source |> blank_cplusplus_blocks |> sanitize_empty_decl_prefix_macros
+
 (**
   Parse a file using FrontC and return the AST
 
   @param filename The path to the C file to parse
 *)
-let parse_file filename = 
+let parse_file filename =
   let source = In_channel.with_open_text filename In_channel.input_all in
-  let res = Parse.string (sanitize_empty_decl_prefix_macros source) in
+  let res = Parse.string (sanitize source) in
   process_res res
 
-let parse_string s = 
-  let res = Parse.string (sanitize_empty_decl_prefix_macros s) in 
+let parse_string s =
+  let res = Parse.string (sanitize s) in 
   process_res res
 
 
