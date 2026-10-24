@@ -124,7 +124,9 @@ type e' =
      only narrows a too-wide initializer (e.g. [malloc]'s [c_ptr]) and never
      widens nor de-refines an already-precise one (e.g. [CHAR]'s non-null
      [c_string('a)]). *)
-| Function of string * ctype * (ctype * Variable.t) list * e
+| Function of string * ctype * (ctype * Variable.t) list * e * Variable.t option
+  (* The last component is the variable the function's recursive calls refer
+     to, for a recursive function typed as an MLsem [LambdaRec]. *)
 | Switch of e * (e * e * bool) list (* expression on which to switch, and then case/default (Noop), their bodies and whether it had a break*)
 | Seq of e * e
 | Noop (* Hack for the declarations. We should rather use the declarations directly rather than doing the imprecise analysis of used variables in bv_e*)
@@ -542,7 +544,7 @@ let rec aux_e (eid, _decl, vars, e) =
            already-precise initializer is preserved and only a too-wide one is
            narrowed to the declared pointer type. *)
         A.TypeCast (e, typeof_ctype ty |> GTy.mk , SA.NoCheck)
-    | Function (_name, _ret_type, params, body) ->
+    | Function (_name, _ret_type, params, body, self) ->
       (* Create lets in the body for each argument: match parameter names with
        type variable in the domain *)
       let arg_types = List.map 
@@ -563,9 +565,25 @@ let rec aux_e (eid, _decl, vars, e) =
         MVariable.create Immut None, body) in
         (* we could give a more precise type for the attributes: noclass But then it displays <> after the closures, which is
           too much noise! *)
-        A.Constructor
-          (CCustom { cname="cattr" ; cgen=true ; cdom=AttrConstr.cdom Rstt.Classes.any ; cons=AttrConstr.cons Rstt.Classes.any },
-           [Eid.unique(), lambda])
+        let fn =
+          A.Constructor
+            (CCustom { cname="cattr" ; cgen=true ; cdom=AttrConstr.cdom Rstt.Classes.any ; cons=AttrConstr.cons Rstt.Classes.any },
+             [Eid.unique(), lambda])
+        in
+        (match self with
+         | None -> fn
+         | Some self ->
+           (* A recursive function: its recursive calls refer to [self], bound
+              by a one-element [LambdaRec], whose value is the 1-tuple of the
+              function. *)
+           (* [self] is annotated with the shape of a function value, an
+              attr-tagged arrow between inference variables (calls project
+              it with [pfun]); unannotated, it would be [any]. *)
+           let tv () = TVar.typ (TVar.mk KInfer None) in
+           let self_ty =
+             GTy.mk (AttrConstr.cons Rstt.Classes.any [ Arrow.mk (tv ()) (tv ()) ]) in
+           A.Projection (SA.Pi (1, 0),
+             (Eid.unique (), A.LambdaRec [ (Some self_ty, self, (Eid.unique (), fn)) ])))
     | Switch (e, cases) ->
         let e = aux_e e in
         let make_pattern_case acc (case_e, body_e, has_break) =
@@ -630,8 +648,8 @@ let rec aux_e (eid, _decl, vars, e) =
       | TyCheck (e, ty) -> TyCheck (aux e, ty)
       | Cast (ty, e) -> Cast (ty, aux e)
       | CoerceNarrow (ty, e) -> CoerceNarrow (ty, aux e)
-      | Function (name, ret_type, params, body) ->
-          Function (name, ret_type, params, aux body)
+      | Function (name, ret_type, params, body, self) ->
+          Function (name, ret_type, params, aux body, self)
       | Switch (e, cases) ->
           let cases = List.map (fun (case_e, body_e, has_break) -> (aux case_e, aux body_e, has_break)) cases in
           Switch (aux e, cases)
@@ -855,10 +873,10 @@ let rec aux_e (eid, _decl, vars, e) =
           let e1', env1, _ = aux e1 env in
           ((id, decl, env, CoerceNarrow (ty, e1')), env1, None)
 
-      | Function (name, ret_type, params, body) ->
+      | Function (name, ret_type, params, body, self) ->
           (* Do not propagate outer constants into function bodies. *)
           let body', _, _ = aux body VarMap.empty in
-          ((id, decl, env, Function (name, ret_type, params, body')), env, None)
+          ((id, decl, env, Function (name, ret_type, params, body', self)), env, None)
 
       | Switch (e1, cases) ->
           let e1', env1, _ = aux e1 env in

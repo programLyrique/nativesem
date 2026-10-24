@@ -750,11 +750,13 @@ and call_variadic_aware env key callee args =
       (match List.fold_right (fun a acc -> fresh_e env (Ast.Seq (aux_e env a, acc))) extra call with
        | (_, _, _, e) -> e)
   | _ -> Ast.Call (callee, List.map (aux_e env) args)
-and transform env (pos, topl_unit) = 
+(* [self]: for a recursive function typed as an MLsem [LambdaRec] (see
+   [Runner.infer_def]), the variable its recursive calls refer to. *)
+and transform ?self env (pos, topl_unit) = 
   let eid = Eid.unique_with_pos pos in
   let (decl, e) = match topl_unit with 
   | Fundef (ret_ty, name, params, body) ->
-    translate_def env (Name.Ident name) ret_ty name params body
+    translate_def ?self env (Name.Ident name) ret_ty name params body
   | MacroDef (name, params, body) ->
     translate_def env (Name.Macro name) Ast.Any name params body
   | TypeDecl (name, ty) -> (Ast.DeclMap.add name ty env.decl, Ast.Noop)
@@ -764,8 +766,14 @@ and transform env (pos, topl_unit) =
   in
   (eid, decl, Ast.VarMap.empty, e)
 (* A function or macro definition, recorded under [key] in [variadic_arity]
-   when variadic. *)
-and translate_def env key ret_ty name params body =
+   when variadic. In the body of a recursive function typed as a [LambdaRec],
+   its own name is [self]. *)
+and translate_def ?self env key ret_ty name params body =
+    let env =
+      match self with
+      | None -> env
+      | Some v -> { env with id = NameMap.singleton (Name.Ident name) v :: env.id }
+    in
     (* Bind every parameter into the topmost scope frame. The body is emitted
        by the parser as a [Block] for actual definitions and as [Seq []] for
        forward declarations; treat [Block] specially so the function body's
@@ -806,7 +814,7 @@ and translate_def env key ret_ty name params body =
         | Vararg -> None) params
     in
     let ret_ty = resolve_ctype env.decl ret_ty in
-    (env.decl, Ast.Function (name, ret_ty, params, e))
+    (env.decl, Ast.Function (name, ret_ty, params, e, self))
 
 let map f e = 
   let rec aux (pos, e) = 

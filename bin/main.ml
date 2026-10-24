@@ -117,6 +117,14 @@ let mlsem_recording_opt =
   in
   Arg.(value & flag & info ["mlsem-recording"] ~doc)
 
+let lambda_rec_opt =
+  let doc =
+    "Also type each recursive function as a recursive group (MLsem's \
+     LambdaRec), giving that inference at most $(docv) seconds, and intersect \
+     the result with the type obtained against its declared C signature. \
+     Requires --fallback-c-signature. Off by default." in
+  Arg.(value & opt (some float) None & info ["lambda-rec"] ~docv:"SECONDS" ~doc)
+
 let log_times_opt =
   let doc =
     "Emit timing diagnostics. Two kinds of lines: (1) a '  timing: <seconds> \
@@ -151,9 +159,10 @@ let cmd =
      and+ fallback_c_signature = fallback_c_sig_opt
      and+ call_graph = call_graph_opt
      and+ log_times = log_times_opt
+     and+ lambda_rec = lambda_rec_opt
      and+ mlsem_recording = mlsem_recording_opt
     and+ path = path_arg in
-    PEnv.sequential_handler Defs.parsed_types_penv (fun path -> main ~mlsem_recording {cst; past; ast; mlsem ; typing = not no_typing ; debug ; filter; timeout; fallback_c_signature; call_graph; log_times} include_dirs path) path |> fst)
+    PEnv.sequential_handler Defs.parsed_types_penv (fun path -> main ~mlsem_recording {cst; past; ast; mlsem ; typing = not no_typing ; debug ; filter; timeout; fallback_c_signature; call_graph; log_times; lambda_rec} include_dirs path) path |> fst)
      
 
 let () = exit (Cmd.eval cmd)

@@ -101,6 +101,10 @@ type cmd_options = {
        [parse_output.R] so it never reaches the per-function CSV.
      Off by default. *)
   log_times : bool;
+  (* When [Some seconds], a recursive function is also typed as an MLsem
+     [LambdaRec], within that time, and the result intersected with the one
+     obtained against its C signature (see [infer_def]). Off by default. *)
+  lambda_rec : float option;
 }
 
 let make_substring_pred = function
@@ -269,10 +273,13 @@ let complete_degenerate vars typ declared =
     if Ty.is_empty missing then None
     else Some (Ty.cap typ (wrap (Arrow.mk missing (Arrow.apply declared missing))), missing)
 
-let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : Ast.e) =
+(* [alternative]: another valid type of the function (a recursive function
+   typed as a [LambdaRec], see [infer_def]), intersected with the inferred one,
+   or used instead of the C signature when inference fails. *)
+let infer_ast ?fallback ?completion ?alternative ~key visible opts (idenv, env, decl) (ast : Ast.e) =
   let name,v =
     match ast with
-    | _,_,_,Ast.Function (name, _, _, _) ->
+    | _,_,_,Ast.Function (name, _, _, _, _) ->
         name, MVariable.create MVariable.Immut (Some name)
     | _ -> failwith "Expected a function definition at the top level."
   in
@@ -296,9 +303,13 @@ let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : 
      the substituted type and binds [name] in env — stopping the "unbound
      variable" cascade through callers. *)
   let apply_fallback () =
-    match fallback with
-    | None -> (idenv, env, decl)
-    | Some compute -> bind_fallback ~report visible (idenv, env, decl) key v compute
+    match alternative, fallback with
+    | Some tys, _ ->
+      print_visible ~debug:opts.debug `Default visible v tys;
+      report (Typed { header = `Default ; var = v ; tys }) ;
+      (Idenv.add key v idenv, Env.add v tys env, decl)
+    | None, None -> (idenv, env, decl)
+    | None, Some compute -> bind_fallback ~report visible (idenv, env, decl) key v compute
   in
   let mlsem_ast = ref None in
   let mlsem_ast_for_dump () =
@@ -332,6 +343,14 @@ let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : 
           (*Format.printf "%a: upper bound= %a@.@." Variable.pp v  Ty.pp typ ;*)
           (* We only keep the upper bound as type for v and add it to the environment *)
           let tys = TyScheme.mk vars (GTy.mk typ) in
+          let tys =
+            match alternative with
+            | None -> tys
+            | Some alt ->
+              let (vars', typ') = TyScheme.get alt in
+              TyScheme.mk (MVarSet.union vars vars') (GTy.mk (Ty.cap typ (GTy.ub typ')))
+              |> norm_and_simpl
+          in
           (* An indented line under the type, as [timing:] and [fallback:]. *)
           let extra () =
             Option.iter (Format.printf "  completed by the C signature on: @[<h>%a@]@." Ty.pp)
@@ -345,15 +364,18 @@ let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : 
       idenv, env, decl
   with
   | Inference_timeout seconds ->
-      Format.printf "%s:@.timeout: inference/checking exceeded %.6g seconds@." name seconds;
+      if visible then
+        Format.printf "%s:@.timeout: inference/checking exceeded %.6g seconds@." name seconds;
       if not opts.mlsem && opts.debug then
         Format.printf "MLsem AST:@.%a@." Mlsem.System.Ast.pp (mlsem_ast_for_dump ());
       log_timing ();
       report (Timeout seconds) ;
       apply_fallback ()
   | System.Checker.Untypeable err ->
-      Format.printf "%s:@.untypeable: %s@." name err.title;
-      err.descr |> Option.iter (Format.printf "%s@." ) ;
+      if visible then begin
+        Format.printf "%s:@.untypeable: %s@." name err.title;
+        err.descr |> Option.iter (Format.printf "%s@." )
+      end ;
       if not opts.mlsem && opts.debug  then (* Still print the mlsem ast*)
         Format.printf "MLsem AST:@.%a@." Mlsem.System.Ast.pp (mlsem_ast_for_dump ());
       log_timing ();
@@ -366,7 +388,7 @@ let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : 
          the package still gets processed.
          Fixed upstream; keep this catcher as a safety net for older
          mlsem/sstt pins. *)
-      Format.printf "%s:@.untypeable: internal error: Not_found@." name;
+      if visible then Format.printf "%s:@.untypeable: internal error: Not_found@." name;
       if opts.debug then
         Format.eprintf "%s@." (Printexc.get_backtrace ()) ;
       if not opts.mlsem && opts.debug then
@@ -378,7 +400,7 @@ let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : 
       (* mlsem reconstruction asserts [Cannot assign to an immutable variable]
          and similar internal invariants. Treat as untypeable so the function
          is reported by name and the rest of the package still gets processed. *)
-      Format.printf "%s:@.untypeable: invalid mlsem AST: %s@." name msg;
+      if visible then Format.printf "%s:@.untypeable: invalid mlsem AST: %s@." name msg;
       log_timing ();
       report (Internal (Printf.sprintf "invalid mlsem AST: %s" msg)) ;
       apply_fallback ()
@@ -401,8 +423,9 @@ let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : 
          gets processed.
          Fixed upstream; keep this catcher as a safety net for older
          mlsem/sstt pins. *)
-      Format.printf "%s:@.untypeable: mlsem tallying Unsat (%s)@." name
-        (Printexc.to_string exn);
+      if visible then
+        Format.printf "%s:@.untypeable: mlsem tallying Unsat (%s)@." name
+          (Printexc.to_string exn);
       log_timing ();
       report (Internal (Printf.sprintf "mlsem tallying Unsat (%s)"
         (Printexc.to_string exn))) ;
@@ -590,18 +613,49 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
      | None -> ());
     (idenv, env, decl)
   | _ ->
-      (* A recursive function (its body refers to its own name, a self-loop
-         in the call graph) is first bound, quietly, at its declared C
-         signature, so that its recursive calls see that signature instead of
-         an unbound name. Only their results are as coarse as the signature:
-         the rest of the body is still inferred (domain refinements,
-         non-recursive branches), and the inferred type replaces the binding
-         below. *)
+      (* A recursive function: its body refers to its own name, a self-loop
+         in the call graph. *)
+      let recursive =
+        match past with
+        | _, PAst.Fundef (_, name, _, body) ->
+          PAst.extract_calls_from_expr ~fun_names:(PAst.StrSet.singleton name) body <> []
+        | _ -> false
+      in
+      (* Its recursive calls must see a type, in two ways whose results are
+         both valid types of the function, hence so is their intersection:
+
+         - as an MLsem [LambdaRec] ([opts.lambda_rec]), the recursive calls
+           referring to a [self] variable inferred with the body: precise, but
+           [self] is monomorphic and has the function's own inferred domain,
+           so a branch whose recursive argument is coarser is lost (vctrs'
+           [last(CDR(x))], [CDR] giving any SEXP). Done first, quietly and
+           within its own time budget, as the [alternative];
+         - bound first, quietly, at its declared C signature: only the
+           recursive calls' results are then as coarse as the signature, the
+           rest of the body is still inferred, and the inferred type replaces
+           the binding below. *)
+      let alternative =
+        match past with
+        | _, PAst.Fundef (_, name, _, _) when recursive && opts.lambda_rec <> None ->
+          let self = MVariable.create MVariable.Immut (Some name) in
+          (match PAst.transform ~self {PAst.id = [idenv]; decl} past with
+           | _, _, _, Ast.Noop -> None
+           | (_, decl', _, _) as e ->
+             let key = binding_name past in
+             let idenv', env', _ =
+               infer_ast ~key false
+                 { opts with fallback_c_signature = false ; timeout = opts.lambda_rec }
+                 (idenv, env, decl') e in
+             (match Idenv.find_opt key idenv', Idenv.find_opt key idenv with
+              | Some v, before when Some v <> before -> Some (Env.find v env')
+              | _ -> None))
+        | _ -> None
+      in
       let idenv, env, decl =
         match past with
-        | _, PAst.Fundef (ret_ty, name, params, body)
-          when opts.fallback_c_signature && not (Idenv.mem (id name) idenv)
-               && PAst.extract_calls_from_expr ~fun_names:(PAst.StrSet.singleton name) body <> [] ->
+        | _, PAst.Fundef (ret_ty, name, params, _)
+          when recursive && opts.fallback_c_signature
+               && not (Idenv.mem (id name) idenv) ->
             bind_fallback ~report:(fun _ -> ()) false (idenv, env, decl) (id name)
               (MVariable.create MVariable.Immut (Some name))
               (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
@@ -637,7 +691,8 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       match e with
       | _, decl', _, Ast.Noop -> (idenv, env, decl')
       | _, decl', _, _ ->
-        infer_ast ?fallback ?completion ~key:(binding_name past) visible opts (idenv, env, decl') e
+        infer_ast ?fallback ?completion ?alternative ~key:(binding_name past) visible opts
+          (idenv, env, decl') e
 
 (** Bind the function definition [past] at its declared C signature, as
     [infer_ast] does when inference fails. For an embedder that enforces its

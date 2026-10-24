@@ -295,7 +295,9 @@ INT64_MIN: c_int
 
 
 Rf_envlength: [env] --> c_int
-CDR: [lang] --> any_sexp
+// The rest of a pairlist is a pairlist or NULL: R's pairlists are
+// NULL-terminated (as CONS below builds them); dotted pairs are not modelled.
+CDR: [lang] --> lang | null
 
 // Boolean operators and comparisons
 // C truthiness, as in !__1: any scalar is a condition, 0 and NULL being false.
@@ -381,7 +383,7 @@ cons: [any_sexp, lang | null] --> lang
 lcons: [any_sexp, lang | null] --> lang
 CAR: [lang] --> any_sexp
 CADR: [lang] --> any_sexp
-CDDR: [lang] --> any_sexp
+CDDR: [lang] --> lang | null
 TAG: [lang] --> any_sexp
 SET_TAG: [lang, any_sexp] --> c_void
 SETCAR: [lang, any_sexp] --> any_sexp
