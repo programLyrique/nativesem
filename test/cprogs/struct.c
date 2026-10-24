@@ -157,3 +157,31 @@ int init_partial(void) { struct InitOpts o = { .a = 1 }; return init_use(&o); }
 int init_full(void) { struct InitOpts o = { .a = 1, .b = 2, .p = 0 }; return init_use(&o); }
 int init_zero(void) { struct InitOpts o = { 0 }; return init_use(&o); }
 int init_positional(void) { struct InitOpts o = { 1, 2 }; return init_use(&o); }
+
+/* Structs are typed nominally: [struct NAME], with field types read from a
+ * table. Typed as records, each access through the pointer parameter below
+ * added record conjuncts to the parameter's type variable, and inference took
+ * ~16s for three loops (clue's preprocess, two loop nests, timed out). */
+typedef struct { int n; double **c; } Costs;
+void sub_rows(Costs *p, double min) {
+  int j, n = p->n;
+  for (j = 1; j <= n; j++) p->c[1][j] -= min;
+  for (j = 1; j <= n; j++) p->c[2][j] -= min;
+  for (j = 1; j <= n; j++) p->c[3][j] -= min;
+}
+
+/* Writes keep the struct type; reads give the declared field type. */
+void set_n(Costs *p, int n) { p->n = n; }
+int local_write(void) { Costs k; k.n = 3; return k.n; }
+
+/* A recursive struct needs no recursive type. */
+struct lnode { struct lnode *next; int v; };
+int second(struct lnode *l) { return l->next->v; }
+
+/* Unions are typed nominally too: a member read gives its declared type. They
+ * used to be typed [any], so [s->value.text] could not be projected. */
+struct text { int len; };
+struct str { union { struct text text; double raw; } value; int type; };
+int text_len(struct str *s) { return s->value.text.len; }
+typedef union { int i; double d; } num;
+double num_d(num *n) { return n->d; }

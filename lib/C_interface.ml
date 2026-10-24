@@ -19,7 +19,7 @@ let is_simple_c_function past =
   | Fundef(ret_ty, _, params, _) ->
     let ret = match ret_ty with
       | Ast.SEXP -> false
-      | Ast.Struct _ -> false
+      | Ast.Struct _ | Ast.Union _ -> false
       | Ast.FunPtr _ -> false
       | _ -> true
     in
@@ -28,7 +28,7 @@ let is_simple_c_function past =
         | Param (ty, _) ->
             match ty with
             | Ast.SEXP -> false
-            | Ast.Struct _ -> false
+            | Ast.Struct _ | Ast.Union _ -> false
             | Ast.FunPtr _ -> false
             | _ -> true) params
   in

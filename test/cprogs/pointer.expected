@@ -2,9 +2,9 @@ assign: [*c_double] -> ()
 
 assign_in_array: ([*(*c_double)] -> ()) & ([c_null] -> empty)
 
-assign_in_struct: ([*{ C : *(*c_double) ; n : c_int_na }] -> ()) & ([*{ C : c_null ; n : c_int_na }] -> empty)
+assign_in_struct: ([*struct S] -> ()) & ([c_null] -> empty)
 
-assign_n: [c_int_na] -> *{ C : *(*c_double) ; n : c_int_na }
+assign_n: [c_int_na] -> *struct S
 
 star_return: ∀'a,'b. [*(c_int_na & 'b) & 'a, c_int_na] -> *(c_int_na & 'b) & 'a
 

@@ -1,34 +1,46 @@
-f: [{ x : c_int_na ; y : c_int_na }] -> ()
+f: [struct Point] -> ()
 
-g: () -> { x : c_true ; y : c(2) }
+g: () -> struct Point
 
-h: [*{ x : c_int_na ; y : c_int_na }] -> ()
+h: ([*struct Point] -> ()) & ([c_null] -> empty)
 
-h2: [*{ x : c_int_na ; y : c_int_na }] -> ()
+h2: ([*struct Point] -> ()) & ([c_null] -> empty)
 
-i: [*{ x : c_int_na ; y : c_int_na }] -> ()
+i: ([*struct Point] -> ()) & ([c_null] -> empty)
 
-i2: [*{ x : c_int_na ; y : c_int_na }] -> ()
+i2: ([*struct Point] -> ()) & ([c_null] -> empty)
 
-ap_create_problem: [*c_double, c_int_na] -> *{ n : c_int_na ; C : *(*c_double) ; c : *(*c_double) ; s : *c_int_na ; f : *c_int_na ; na : c_int_na ; runs : c_int_na ; cost : c_double ; rtime : any }
+ap_create_problem: [*c_double, c_int_na] -> *struct AP
 
-unsat_iter: ([*{ x : c_int_na ; p : *c_int_na }, *{ p : *c_int_na ; a : c_int_na }] -> ()) & ([*{ x : c_int_na ; p : *c_int_na }, c_null] | [c_null, *{ p : *c_int_na ; a : c_int_na }] -> empty)
+unsat_iter: ([*struct UnsatB, *struct UnsatA] -> ()) & ([*struct UnsatB, c_null] | [c_null, *struct UnsatA] -> empty)
 
-anon_nested: ∀'a. [*{ m : { x : c_int_na & 'a } }] -> 'a
+anon_nested: ([*struct AnonOuter] -> c_int_na) & ([c_null] -> empty)
 
-anon_nested2: ([*{ a : c_int ; m : { x : c_int } }] -> c_int) & ([*{ a : c_int_na ; m : { x : c_int_na } }] -> c_int_na) & ([c_null] -> empty)
+anon_nested2: ([*struct AnonOuter2] -> c_int_na) & ([c_null] -> empty)
 
-anon_nested_cast: [*c_void] -> *{ m : { x : c_int_na } }
+anon_nested_cast: [*c_void] -> *struct AnonOuter
 
-anon_nested_ptr: ∀'a. [*{ m : *{ x : c_int_na & 'a } }] -> 'a
+anon_nested_ptr: ([*struct AnonOuterPtr] -> c_int_na) & ([c_null] -> empty)
 
-init_use: ([*{ p : *c_int_na ; a : c_int ; b : c_int }] -> c_int) & ([*{ p : *c_int_na ; a : c_int_na ; b : c_int_na }] -> c_int_na) & ([c_null] -> empty)
+init_use: ([*struct InitOpts] -> c_int_na) & ([c_null] -> empty)
 
 init_partial: () -> c_int_na
 
-init_full: () -> c_int
+init_full: () -> c_int_na
 
 init_zero: () -> c_int_na
 
-init_positional: () -> c_int
+init_positional: () -> c_int_na
+
+sub_rows: ([*struct Costs, c_double] -> ()) & ([c_null, c_double] -> empty)
+
+set_n: [*struct Costs, c_int_na] -> ()
+
+local_write: () -> c_int_na
+
+second: ([*struct lnode] -> c_int_na) & ([c_null] -> empty)
+
+text_len: ([*struct str] -> c_int_na) & ([c_null] -> empty)
+
+num_d: ([*union num] -> c_double) & ([c_null] -> empty)
 

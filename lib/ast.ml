@@ -155,21 +155,56 @@ let rec typeof_const c =
 
 module StrMap = Map.Make(String)
 
-(* Cache of recursive struct types keyed by their syntactic form so that
-   equivalent self-referential structs reuse the same Sstt encoding instead
-   of re-allocating a fresh recursive type (and a fresh alias) at every
-   occurrence. Keyed by [show_ctype] to distinguish structs with the same
-   name but different field layouts from different translation units. *)
-let recursive_struct_cache : (string, Sstt.Ty.t) Hashtbl.t = Hashtbl.create 32
+(* Structs and unions are typed nominally: [struct NAME] is an atom of its own
+   (an Sstt tag), disjoint from every other type, and the types of its fields
+   are read from a table indexed by the struct name. Field reads and writes are typed
+   through that table ([field_read_scheme], [field_write_scheme]): a struct
+   value carries no record of its fields, so no type variable ever ends up
+   inside one. (Typed structurally, as records, every access through a pointer
+   parameter added a conjunct of record types to the parameter's type variable
+   and emptiness checks became exponential in the number of accesses.) *)
+module Structs = struct
+  (* Both tables are indexed by [struct NAME] or [union NAME]: C keeps the
+     two kinds of tags in separate namespaces. *)
+  let atoms : (string, Ty.t) Hashtbl.t = Hashtbl.create 32
 
-(* [typeof_ctype] translates a [ctype] to an Sstt [Ty.t]. Self-referential
-   structs (e.g. [struct node { struct node *next; }]) are encoded using
-   Sstt's equirecursive machinery: when a struct is first entered, a fresh
-   [Sstt.Var.t] is bound to its name; recursive occurrences re-use that var,
-   and the full type is tied together with [Sstt.Ty.of_eqs]. *)
+  (* The distinct field lists seen for each struct name: two translation
+     units may define different structs of the same name. *)
+  let layouts : (string, (ctype * string) list list) Hashtbl.t = Hashtbl.create 32
+
+  let atom name =
+    match Hashtbl.find_opt atoms name with
+    | Some ty -> ty
+    | None ->
+        let tag = Sstt.Tag.mk name in
+        let ty = (tag, Sstt.Ty.any) |> Sstt.Descr.mk_tag |> Sstt.Ty.mk_descr in
+        PrinterCfg.add_printer_param
+          Sstt.Printer.{ aliases = [ (ty, name) ] ; extensions = [] } ;
+        Hashtbl.add atoms name ty ;
+        ty
+
+  (* A forward declaration ([struct NAME;] or a use before the definition)
+     has no fields and records nothing. *)
+  let register name fields =
+    if fields <> [] then
+      let known = Hashtbl.find_opt layouts name |> Option.value ~default:[] in
+      if not (List.mem fields known) then
+        Hashtbl.replace layouts name (fields :: known)
+
+  (* The structs with a field [label], with the C types of that field. *)
+  let with_field label =
+    Hashtbl.fold (fun name known acc ->
+      let tys =
+        known |> List.filter_map (List.find_map (fun (ty, f) ->
+          if f = label then Some ty else None))
+      in
+      if tys = [] then acc else (name, tys) :: acc
+    ) layouts []
+end
+
 let typeof_ctype ct =
   let open Rstt in
-  let rec aux resolving ct =
+  let rec aux ct =
     match ct with
     | Void -> Cenums.void
     | NoReturn -> Ty.empty
@@ -178,38 +213,17 @@ let typeof_ctype ct =
     | Char -> Cenums.char
     | Bool -> Cint.bool
     | Ptr Char -> Cptr.string
-    | Ptr ty -> Cptr.mk_nonstring (aux resolving ty)
+    | Ptr ty -> Cptr.mk_nonstring (aux ty)
     | SEXP -> Defs.any_sexp
     | Any -> Ty.any
-    | Typeref name ->
-        (match StrMap.find_opt name resolving with
-         | Some v -> Sstt.Ty.mk_var v
-         | None -> Ty.any)
-    | Struct (name, _) when StrMap.mem name resolving ->
-        Sstt.Ty.mk_var (StrMap.find name resolving)
-    | Struct (_, []) -> Record.mk_closed []
+    | Typeref _ -> Ty.any
+    | Struct ("", []) -> Record.mk_closed [] (* the seed of a designated initializer *)
     | Struct (name, fields) ->
-        let key = show_ctype ct in
-        (match Hashtbl.find_opt recursive_struct_cache key with
-         | Some t -> t
-         | None ->
-           let v = Sstt.Var.mk name in
-           let resolving = StrMap.add name v resolving in
-           let body = Record.mk_closed
-             (List.map (fun (fty, fname) -> (fname, (aux resolving fty, false))) fields) in
-           if Sstt.VarSet.mem v (Sstt.Ty.vars body) then
-             (* Self-referential struct: tie the knot with Sstt's equirecursive
-                encoding, and register the type under "struct <name>" so the
-                printer doesn't unfold the recursion (Rstt's printer can't
-                render recursive [defs]). *)
-             let t = match Sstt.Ty.of_eqs [(v, body)] with
-               | (_, t) :: _ -> t
-               | [] -> body
-             in
-             Hashtbl.add recursive_struct_cache key t ;
-             t
-           else
-             body)
+        let name = "struct " ^ name in
+        Structs.register name fields ; Structs.atom name
+    | Union (name, fields) ->
+        let name = "union " ^ name in
+        Structs.register name fields ; Structs.atom name
     | Enum (_, enumerators) ->
         if List.for_all (fun (_, value) -> Option.is_some value) enumerators && enumerators <> [] then
           enumerators
@@ -222,16 +236,44 @@ let typeof_ctype ct =
            for their argument tuple; fixed-arity ones use the explicit tuple.
            A C function pointer is a bare arrow (no [Attr] wrap) — see
            [Ast.build_call]'s [pfun] projection, which accepts bare arrows. *)
-        let ret_ty = aux resolving ret in
+        let ret_ty = aux ret in
         let arg_ty =
           if variadic then Ty.any
-          else Tuple.mk (List.map (aux resolving) params)
+          else Tuple.mk (List.map aux params)
         in
         Arrow.mk arg_ty ret_ty
     | _ -> failwith ("Type not supported yet in typeof_ctype: " ^ show_ctype ct)
   in
-  aux StrMap.empty ct
+  aux ct
 
+
+(* [e.label]: [struct S -> T] for each struct [S] with a field [label] of C type
+   [T], and, for the records of the [.ty] files (e.g. [Rcomplex]), the
+   projection ['a. { label : 'a .. } -> 'a]. The struct atoms are disjoint, so
+   applying the intersection never splits on a type variable of the argument. *)
+let field_read_scheme label =
+  let a = TVar.mk KNoInfer None |> TVar.typ in
+  let structs =
+    Structs.with_field label |> List.map (fun (name, ctys) ->
+      Arrow.mk (Structs.atom name) (List.map typeof_ctype ctys |> Ty.disj))
+  in
+  Arrow.mk (Record.mk_open [ label, (a, false) ]) a :: structs
+  |> Ty.conj |> GTy.mk |> TyScheme.mk_poly
+
+(* [e.label = v], as a function of [(e, v)] returning the updated value: the
+   type of a struct does not depend on the values of its fields, so the result
+   is [e]'s type. The value is not checked against the field's declared type:
+   C's implicit conversions would have to be modeled, and reads give the
+   declared type anyway. *)
+let field_write_scheme label =
+  let r = TVar.mk KNoInfer None |> TVar.typ in
+  let structs =
+    Structs.with_field label |> List.map (fun (name, _) ->
+      let s = Structs.atom name in
+      Arrow.mk (Tuple.mk [ s ; Ty.any ]) s)
+  in
+  Arrow.mk (Tuple.mk [ Ty.cap r (Record.mk_open []) ; Ty.any ]) r :: structs
+  |> Ty.conj |> GTy.mk |> TyScheme.mk_poly
 
 
 module AttrProj = struct
@@ -369,9 +411,16 @@ let rec aux_e (eid, _decl, vars, e) =
     | VarAssign (v,e2) -> A.VarAssign (v, aux_e e2)
     | Unop (op,e) -> aux (Call ((Eid.unique (), DeclMap.empty, vars, Id op), [e]))
     | Binop (op,e1,e2) -> aux (Call ((Eid.unique (), DeclMap.empty, vars, Id op), [e1; e2]))
-    | FieldRead (e, field) -> A.Projection (SA.PiField field, aux_e e)
-    | FieldUpdate (e, field, value) -> 
-        A.Operation (SA.RecUpd field, (Eid.unique (), A.Constructor (SA.Tuple 2, [aux_e e; aux_e value])))
+    | FieldRead (e, field) ->
+        A.Operation
+          (SA.OCustom { oname = "." ^ field ; ogen = true ;
+                        ofun = (fun _ -> field_read_scheme field) },
+           aux_e e)
+    | FieldUpdate (e, field, value) ->
+        A.Operation
+          (SA.OCustom { oname = "." ^ field ^ "<-" ; ogen = true ;
+                        ofun = (fun _ -> field_write_scheme field) },
+           (Eid.unique (), A.Constructor (SA.Tuple 2, [aux_e e; aux_e value])))
     (* Some special cases for some calls*)
     | Call ((_,_,_, Id v), [(_, _,_,Id vty); n_expr ])
       when is_rfun "allocVector" v &&

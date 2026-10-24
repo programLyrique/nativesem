@@ -273,6 +273,15 @@ let rec resolve_ctype_aux visited decl ty =
        | Ast.Struct ("SEXPREC", _) -> Ast.SEXP
        | _ -> Ast.Ptr t')
   | Ast.Array (t, len) -> Ast.Array (resolve_ctype_aux visited decl t, len)
+  | Ast.Union (name, []) ->
+      if StrSet.mem name visited then ty
+      else (
+        match Ast.DeclMap.find_opt name decl with
+        | Some (Ast.Union (_, fields)) ->
+            let visited = StrSet.add name visited in
+            Ast.Union (name, List.map (fun (fty, fname) -> (resolve_ctype_aux visited decl fty, fname)) fields)
+        | _ -> ty
+      )
   | Ast.Union (name, fields) ->
       let visited = StrSet.add name visited in
       Ast.Union (name, List.map (fun (fty, fname) -> (resolve_ctype_aux visited decl fty, fname)) fields)
@@ -286,7 +295,7 @@ let resolve_ctype decl ty = resolve_ctype_aux StrSet.empty decl ty
 
 let rec has_struct_type ty =
   match ty with
-  | Ast.Struct _ -> true
+  | Ast.Struct _ | Ast.Union _ -> true
   | Ast.Ptr t -> has_struct_type t
   | Ast.Array (t, _) -> has_struct_type t
   | _ -> false

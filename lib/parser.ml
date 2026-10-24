@@ -481,6 +481,11 @@ and aux_type_spec (type_spec : type_specifier)  =
   | `Id (_loc, s) when s = "SEXP" -> Ast.SEXP
   | `Id (_, s) -> Ast.Typeref s
   | `Struct_spec (_,_, _,struc, _) -> aux_struct struc
+  | `Union_spec (_, _, body, _) ->
+      (* Same body as a struct; typed nominally like one ([Ast.Structs]). *)
+      (match aux_struct body with
+       | Ast.Struct (name, fields) -> Ast.Union (name, fields)
+       | ty -> ty)
   | `Enum_spec (_, enum_spec, _) -> aux_enum enum_spec
   | `Sized_type_spec sized -> aux_sized_type_spec sized
   | _ ->
@@ -628,6 +633,26 @@ and aux_type_definition ((_, _, type_def_ty, (first_decl, rest_decls), _, _) : t
     if base_ty = Ast.Void
        && List.exists (fun q -> is_noreturn_modifier (`Type_qual q)) (before @ after)
     then Ast.NoReturn else base_ty in
+  (* [typedef struct { ... } T;]: the anonymous struct (or union) takes the
+     name [T], which its types print. Decided once, from the first plain
+     declarator, so that [typedef struct { ... } T, *PT;] names one struct. *)
+  let base_ty =
+    match base_ty with
+    | (Ast.Struct (anon, fields) | Ast.Union (anon, fields))
+      when String.starts_with ~prefix:"anon#" anon ->
+        let plain =
+          first_decl :: List.map snd rest_decls
+          |> List.find_map (fun td ->
+              match aux_type_declarator td with
+              | 0, name, None -> Some name
+              | _ -> None)
+        in
+        (match plain, base_ty with
+         | Some name, Ast.Union _ -> Ast.Union (name, fields)
+         | Some name, _ -> Ast.Struct (name, fields)
+         | None, _ -> base_ty)
+    | _ -> base_ty
+  in
   let aux_one td =
     let (ptr_level, name, fp) = aux_type_declarator td in
     let ty = match fp with

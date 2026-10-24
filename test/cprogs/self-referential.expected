@@ -1,6 +1,6 @@
-head: ∀'a. [*{ value : c_int_na & 'a ; next : x1 }] -> 'a where x1 = *{ value : c_int_na ; next : x1 }
+head: ([*struct node] -> c_int_na) & ([c_null] -> empty)
 
-tail: ∀'a. [*{ value : c_int_na ; next : *x1 & 'a }] -> 'a where x1 = { value : c_int_na ; next : *x1 }
+tail: ([*struct node] -> *struct node) & ([c_null] -> empty)
 
-root: ∀'a. [*{ value : c_int_na & 'a ; left : x1 ; right : x1 }] -> 'a where x1 = *{ value : c_int_na ; left : x1 ; right : x1 }
+root: ([*struct tree] -> c_int_na) & ([c_null] -> empty)
 
