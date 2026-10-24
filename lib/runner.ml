@@ -234,7 +234,42 @@ let bind_fallback ~report visible (idenv, env, decl) key v compute =
     (Idenv.add key v idenv, Env.add v tys env, decl)
   with Failure _ -> (idenv, env, decl)
 
-let infer_ast ?fallback ~key visible opts (idenv, env, decl) (ast : Ast.e) =
+(* Complete an inferred function type [typ] (a scheme over [vars]) that only
+   ever fails, with the declared C signature [declared] on the inputs it lost.
+   Applied to functions declared to return a value only (see [infer_def]).
+
+   NativeSem drops from a function's domain the inputs whose path it could
+   not type (a branch with an unbound name or an untypeable call), while an
+   input that leads to an error stays, with result [empty]. A type all of
+   whose arms return [empty] and whose domain does not cover the declared one
+   therefore lost its real paths: vctrs' [s3_ptype] keeps only its
+   [r_stop_internal] branches, [r_call_n] only a NULL argument. Such a type
+   serves callers worse than the signature, so the missing part is given the
+   signature's result. Error helpers are untouched, their domain being whole;
+   so is a type with a real result, whose narrow domain may be a genuine
+   requirement (an [INTEGER(x)] call) that the R side checks. Returns [None]
+   when nothing is completed. *)
+let complete_degenerate vars typ declared =
+  (* An inferred function is attr-tagged ([cattr]: any classes and
+     attributes); a C signature is a bare arrow. *)
+  let wrapped = Ty.leq typ Rstt.Attr.any && not (Ty.is_empty typ) in
+  let content t = if wrapped then Rstt.Attr.proj_content t else t in
+  let wrap t = if wrapped then Ast.AttrConstr.cons Rstt.Classes.any [ t ] else t in
+  let arms = try Arrow.dnf (content typ) with _ -> [] in
+  let degenerate =
+    arms <> [] && List.for_all (List.for_all (fun (_, codom) -> Ty.is_empty codom)) arms in
+  if not degenerate then None
+  else
+    let ground =
+      let s = MVarSet.proj1 vars |> Sstt.VarSet.elements
+              |> List.map (fun v -> (v, Ty.any)) |> Subst.of_list1 in
+      Subst.apply s (content typ)
+    in
+    let missing = Ty.diff (Arrow.domain declared) (Arrow.domain ground) in
+    if Ty.is_empty missing then None
+    else Some (Ty.cap typ (wrap (Arrow.mk missing (Arrow.apply declared missing))), missing)
+
+let infer_ast ?fallback ?completion ~key visible opts (idenv, env, decl) (ast : Ast.e) =
   let name,v =
     match ast with
     | _,_,_,Ast.Function (name, _, _, _) ->
@@ -285,10 +320,25 @@ let infer_ast ?fallback ~key visible opts (idenv, env, decl) (ast : Ast.e) =
           let tys = norm_and_simpl typ in
           let (vars, typ) = TyScheme.get tys in
           let typ = GTy.ub typ in
+          let typ, completed_on =
+            match completion with
+            | None -> typ, None
+            | Some compute ->
+              (match complete_degenerate vars typ (compute ()) with
+               | Some (completed, missing) -> completed, Some missing
+               | None -> typ, None
+               | exception Failure _ -> typ, None)
+          in
           (*Format.printf "%a: upper bound= %a@.@." Variable.pp v  Ty.pp typ ;*)
           (* We only keep the upper bound as type for v and add it to the environment *)
           let tys = TyScheme.mk vars (GTy.mk typ) in
-          print_visible ~debug:opts.debug ~extra:log_timing `Default visible v tys;
+          (* An indented line under the type, as [timing:] and [fallback:]. *)
+          let extra () =
+            Option.iter (Format.printf "  completed by the C signature on: @[<h>%a@]@." Ty.pp)
+              completed_on ;
+            log_timing ()
+          in
+          print_visible ~debug:opts.debug ~extra `Default visible v tys;
           report (Typed { header = `Default ; var = v ; tys }) ;
           (Idenv.add key v idenv, Env.add v tys env, decl))
     else
@@ -557,10 +607,21 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
           | _ -> None
         else None
       in
+      (* The signature also completes a type that only ever fails
+         ([complete_degenerate]), but only for a function declared to return
+         a value: such a function whose every path fails has lost its real
+         paths, while a [void] error helper ([stop_*]) or a macro (whose
+         declared type is just [any -> any]) failing everywhere is genuine. *)
+      let completion =
+        match past with
+        | _, PAst.Fundef (ret_ty, _, _, _)
+          when not (List.mem (PAst.resolve_ctype decl ret_ty) [ Ast.Void ; Ast.NoReturn ]) -> fallback
+        | _ -> None
+      in
       match e with
       | _, decl', _, Ast.Noop -> (idenv, env, decl')
       | _, decl', _, _ ->
-        infer_ast ?fallback ~key:(binding_name past) visible opts (idenv, env, decl') e
+        infer_ast ?fallback ?completion ~key:(binding_name past) visible opts (idenv, env, decl') e
 
 (** Bind the function definition [past] at its declared C signature, as
     [infer_ast] does when inference fails. For an embedder that enforces its
@@ -1050,3 +1111,27 @@ let%test "declaration does not override existing full function" =
   in
   Variable.equal (Idenv.find (id "foo") idenv) full_v
   && Env.find full_v env == full_ty
+
+(* [complete_degenerate] on [f(int k)]: only the error path for [k == 0] was
+   typed, so the other inputs come back with the declared result. *)
+let%test "complete_degenerate restores the inputs a failing type lost" =
+  let open Rstt in
+  let wrap t = Ast.AttrConstr.cons Classes.any [ t ] in
+  let declared = Arrow.mk (Tuple.mk [ Cint.any_na ]) Defs.any_sexp in
+  let inferred = wrap (Arrow.mk (Tuple.mk [ Cint.ff ]) Ty.empty) in
+  match complete_degenerate MVarSet.empty inferred declared with
+  | Some (completed, missing) ->
+    Ty.equiv missing (Tuple.mk [ Ty.diff Cint.any_na Cint.ff ])
+    && Ty.leq completed inferred
+  | None -> false
+
+let%test "complete_degenerate leaves error helpers and real results alone" =
+  let open Rstt in
+  let wrap t = Ast.AttrConstr.cons Classes.any [ t ] in
+  let declared = Arrow.mk (Tuple.mk [ Cint.any_na ]) Defs.any_sexp in
+  (* Every input errors: the domain is whole, nothing was lost. *)
+  let helper = wrap (Arrow.mk (Tuple.mk [ Cint.any_na ]) Ty.empty) in
+  (* A narrow domain with a real result is a requirement, kept as is. *)
+  let narrow = wrap (Arrow.mk (Tuple.mk [ Cint.ff ]) Cint.tt) in
+  complete_degenerate MVarSet.empty helper declared = None
+  && complete_degenerate MVarSet.empty narrow declared = None
