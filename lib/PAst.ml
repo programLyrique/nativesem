@@ -226,6 +226,8 @@ module NameMap = Map.Make (Name)
 type env = {
   id: Variable.t NameMap.t list;
   decl: Ast.ctype Ast.DeclMap.t;
+  ctypes: Ast.ctype Ast.VarMap.t;
+    (** The declared (resolved) C types of the parameters and locals. *)
 }
 
 (* [resolve_ctype] expands Typerefs and empty-struct forward references by
@@ -415,13 +417,17 @@ let push_scope env = {env with id = NameMap.empty :: env.id}
 
 (** Bind [str] to a fresh [Variable.t] in the topmost scope frame of [env].
     Returns the updated env and the new variable. *)
-let add_var_top env str =
+let add_var_top ?ty env str =
   let v = MVariable.create MVariable.Mut (Some str) in
   let id = match env.id with
     | [] -> [NameMap.singleton (Name.Ident str) v]
     | top :: rest -> NameMap.add (Name.Ident str) v top :: rest
   in
-  ({env with id}, v)
+  let ctypes = match ty with
+    | Some ty -> Ast.VarMap.add v (resolve_ctype env.decl ty) env.ctypes
+    | None -> env.ctypes
+  in
+  ({env with id; ctypes}, v)
 
 let mk_e env eid expr =
   (eid, env.decl, Ast.VarMap.empty, expr)
@@ -477,7 +483,17 @@ let rec aux_e env (pos,e) =
       let (_, _, _, e) = aux_e env (pos, e) in
       e
   | Binop (op, (e1,e2)) -> Ast.Binop (var env (op ^ "__2"), aux_e env e1, aux_e env e2)
-  | VarAssign ((_,Id s), e2) -> Ast.VarAssign (var env s, aux_e env e2)
+  | VarAssign ((_,Id s), e2) ->
+      (* C's implicit [void* -> T*] conversion, as at an initialization (see
+         the parser's [CoerceNarrow]): assigned to a variable declared [T*],
+         [malloc]'s [c_ptr] is narrowed to [T*]. *)
+      let v = var env s in
+      let e2 = aux_e env e2 in
+      (match Ast.VarMap.find_opt v env.ctypes, e2 with
+       | _, (_, _, _, Ast.Const _) -> Ast.VarAssign (v, e2) (* already exact *)
+       | Some (Ast.Ptr t as ty), _ when t <> Ast.Void ->
+           Ast.VarAssign (v, fresh_e env (Ast.CoerceNarrow (ty, e2)))
+       | _, _ -> Ast.VarAssign (v, e2))
   | VarAssign ((loc1, Call ((_,Id "[]"), ((_, Id base_name) :: _ as args))) ,e2) ->
       (* Model arr[i] = v as a functional update arr = []<-(arr, i, v) so
          subsequent reads can use the updated value. *)
@@ -552,15 +568,15 @@ let rec aux_e env (pos,e) =
          pre-added [Variable.t]). The whole lowered while is wrapped in
          [Ast.Declare]s so the locals stay visible only inside the for. *)
       let rec collect_decls acc = function
-        | _, VarDeclare (_, (_, Id s)) -> s :: acc
+        | _, VarDeclare (ty, (_, Id s)) -> (s, ty) :: acc
         | _, Seq inner -> List.fold_left collect_decls acc inner
         | _ -> acc
       in
       let decls = List.rev (collect_decls [] init) in
       let env_for, declared_vs =
         List.fold_left
-          (fun (env, vs) name ->
-            let env', v = add_var_top env name in
+          (fun (env, vs) (name, ty) ->
+            let env', v = add_var_top ~ty env name in
             (env', v :: vs))
           (push_scope env, [])
           decls
@@ -686,7 +702,7 @@ and aux_block env stmts =
     | stmt :: rest ->
         (match stmt with
          | _, VarDeclare (typ, (_, Id s)) ->
-             let env', v = add_var_top env s in
+             let env', v = add_var_top ~ty:typ env s in
              let typ = resolve_ctype env.decl typ in
              let init_e =
                if has_struct_type typ then
@@ -843,12 +859,13 @@ and translate_def ?self env key ret_ty name params body =
        translator) rather than a synthetic eid from the [{}] span. The block
        still introduces its own scope frame so locals declared inside cannot
        leak out. *)
-    let param_vars = bv_params params |> StrSet.elements in
     let env =
       List.fold_left
-        (fun env name -> fst (add_var_top env name))
+        (fun env -> function
+          | Param (ty, name) -> fst (add_var_top ~ty env name)
+          | Vararg -> env)
         env
-        param_vars
+        params
     in
     (* C converts an argument to a [bool] parameter: any scalar is accepted,
        and the callee sees 0 or 1. So a [bool] parameter is typed as an [int]

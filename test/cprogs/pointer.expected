@@ -14,3 +14,7 @@ star_void: [*c_int_na, c_int_na] -> ()
 
 star_two_writes: [*c_int_na, c_int_na, c_int_na] -> ()
 
+first: ∀'a. [*(c_int_na & 'a)] -> 'a
+
+assign_alloc: [c_int_na] -> c_int_na
+

@@ -45,3 +45,11 @@ void star_two_writes(int *p, int v1, int v2) {
     *p = v1;
     *p = v2;
 }
+/* C converts void* to T* on assignment too, not only at an initialization
+ * (clue's ap_hungarian: [ri = calloc(...)] then [cover(p, ri, ci)]). */
+int first(int *xs) { return xs[0]; }
+int assign_alloc(int n) {
+  int *xs;
+  xs = calloc(n, sizeof(int));
+  return first(xs);
+}
