@@ -1198,7 +1198,7 @@ and aux_non_case_statement (stmt: non_case_statement) =
   | `Do_stmt do_stmt -> aux_do_statement do_stmt
   | `Brk_stmt ((l1, _), (l2, _)) -> (locs_to_pos l1 l2, A.Break)
   | `Cont_stmt ((l1, _), (l2, _)) -> (locs_to_pos l1 l2, A.Next)
-  | `Goto_stmt ((l1, _),_, (l2, _)) -> (locs_to_pos l1 l2, A.Const A.CNull) (* Currently ignore gotos*)
+  | `Goto_stmt ((l1, _), label, (l2, _)) -> (locs_to_pos l1 l2, A.Goto (token_to_string label))
   | `Labe_stmt labeled_stmt -> aux_labeled_statement labeled_stmt
   | `Switch_stmt st -> aux_switch_statement st
   | `Attr_stmt _ -> failwith "Not supported yet: attribute statements"

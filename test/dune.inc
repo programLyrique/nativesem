@@ -474,3 +474,14 @@
  (deps    cprogs/truthiness.c cprogs/truthiness.expected)
  (action  (diff cprogs/truthiness.expected truthiness.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/macro-bodies.c)
+ (action  (with-stdout-to macro-bodies.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/macro-bodies.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/macro-bodies.c cprogs/macro-bodies.expected)
+ (action  (diff cprogs/macro-bodies.expected macro-bodies.output)))
+

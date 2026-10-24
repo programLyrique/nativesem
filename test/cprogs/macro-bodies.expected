@@ -1,0 +1,22 @@
+KEEP: ∀'a. ['a] -> 'a
+
+ID: ∀'a. ['a] -> 'a
+
+TWICE: (tuple1 -> any) & ([c_int] -> c_int) & ([c_int_na] -> c_int_na) & ([c_double] -> c_double) & ([c_char] -> c_char)
+
+SWAP: tuple2 -> ()
+
+use_keep: ∀'a. [any_sexp & 'a] -> 'a
+
+use_id: ∀'a. [c_int_na & 'a] -> 'a
+
+use_twice: ([c_int] -> c_int) & ([c_int_na] -> c_int_na)
+
+NOT_C: tuple1 --> any
+
+FIRST_POS: [*(~(c(1..) | c_string)) | c_string, any, any] | [*c(1..), any, any] -> ()
+
+Creating fresh variable: TRY
+use_try:
+untypeable: unbound variable
+name: TRY

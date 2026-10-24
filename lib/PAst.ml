@@ -73,6 +73,8 @@ type const =
   | Return of e option
   | Break
   | Next
+  | Goto of string
+    (** [goto label]. Not modeled by the typer yet: lowered to a no-op. *)
   | Seq of e list
   | Block of e list
     (** C compound statement [{ ... }]. Introduces a new lexical scope:
@@ -129,7 +131,7 @@ let bv_params params =
 (** Extract variables from an expression*)
 let rec bv_e in_lhs_assign (_,e) = 
   match e with 
-  | Break | Next | Const _ -> StrSet.empty
+  | Break | Next | Goto _ | Const _ -> StrSet.empty
   | Id s when in_lhs_assign -> StrSet.singleton s
   | Id _ -> StrSet.empty
   | Unop (_, e) -> bv_e in_lhs_assign e
@@ -579,6 +581,7 @@ let rec aux_e env (pos,e) =
   | Return (Some e) -> Ast.Return (Some (aux_e env e))
   | Break -> Ast.Break
   | Next -> Ast.Next
+  | Goto _ -> Ast.Const (aux_const CNull)
   | Switch  (e, cases) -> 
       (*Detects break and return; remove break.
         Recurses into nested Seq nodes so that a break inside a compound
@@ -869,7 +872,7 @@ and translate_def ?self env key ret_ty name params body =
 let map f e = 
   let rec aux (pos, e) = 
     let e = match e with 
-    | Const _ | Id _ | Break | Next -> e
+    | Const _ | Id _ | Break | Next | Goto _ -> e
     | Unop (op, e1) -> Unop (op, aux e1)
     | Binop (op, (e1, e2)) -> Binop (op, (aux e1, aux e2))
     | VarDeclare (ty, e1) -> VarDeclare (ty, aux e1)
@@ -896,6 +899,23 @@ let map f e =
     in
     f (pos, e)
   in aux e
+
+(** The immediate subexpressions of an expression, in source order. *)
+let children (_, e) =
+  match e with
+  | Const _ | Id _ | Break | Next | Goto _ | Return None -> []
+  | Unop (_, e1) | VarDeclare (_, e1) | FieldAccess (e1, _) | Default e1
+  | Cast (_, e1) | CoerceNarrow (_, e1) | Return (Some e1) -> [e1]
+  | Binop (_, (e1, e2)) | VarAssign (e1, e2) | Case (e1, e2) | Comma (e1, e2)
+  | While (e1, e2) -> [e1; e2]
+  | Call (f, args) -> f :: args
+  | MacroCall (_, args) -> args
+  | If (cond, then_, else_) -> cond :: then_ :: Option.to_list else_
+  | Ite (cond, then_, else_) -> [cond; then_; else_]
+  | For (init, cond, incr, body) ->
+      (init :: Option.to_list cond) @ Option.to_list incr @ [body]
+  | Switch (e1, cases) -> e1 :: cases
+  | Seq es | Block es -> es
 
 (** Extract function call names from an expression.
     [fun_names] is the set of known function names; bare Id references
@@ -927,7 +947,7 @@ let rec extract_calls_from_expr ?(fun_names=StrSet.empty) (_pos, e') =
      variable". The [fun_names] membership check keeps this to genuine
      function references ([&fn] reaches the [Id] via the [Unop] case below). *)
   | Id name when StrSet.mem name fun_names -> [name]
-  | Const _ | Id _ | Break | Next -> []
+  | Const _ | Id _ | Break | Next | Goto _ -> []
   | Unop (_, e) -> extract e
   | Binop (_, (e1, e2)) -> extract e1 @ extract e2
   | FieldAccess (e, _) -> extract e

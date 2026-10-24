@@ -244,6 +244,46 @@ let is_c_identifier s =
          | _ -> false)
       in ok 1)
 
+(* Whether a parsed macro body behaves like a function body: control never
+   leaves it other than by completing ([return], [goto], or a [break] /
+   [continue] not enclosed by a loop or [switch] of the body itself), and it
+   only assigns its parameters and its own locals. Otherwise its meaning
+   depends on the expansion site (the caller's labels, loops and locals):
+   e.g. utf8's [#define TRY(x) do { if ((err = (x))) goto exit; } while (0)].
+   Labels are not represented after parsing, so every [goto] leaves the body. *)
+let behaves_like_function params body =
+  let rec escapes ~in_loop ~in_switch e =
+    match snd e with
+    | A.Return _ | A.Goto _ -> true
+    | A.Break -> not (in_loop || in_switch)
+    | A.Next -> not in_loop
+    | A.While _ | A.For _ ->
+        List.exists (escapes ~in_loop:true ~in_switch) (A.children e)
+    | A.Switch _ ->
+        List.exists (escapes ~in_loop ~in_switch:true) (A.children e)
+    | _ -> List.exists (escapes ~in_loop ~in_switch) (A.children e)
+  in
+  let rec root (_, e) =
+    match e with
+    | A.Id s -> [ s ]
+    | A.FieldAccess (e, _) -> root e
+    | _ -> []
+  in
+  let rec fold (written, declared) e =
+    let acc =
+      match snd e with
+      | A.VarAssign (lhs, _) | A.Unop (("++" | "--"), lhs) ->
+          (root lhs @ written, declared)
+      | A.VarDeclare (_, (_, A.Id s)) -> (written, s :: declared)
+      | _ -> (written, declared)
+    in
+    List.fold_left fold acc (A.children e)
+  in
+  let written, declared = fold ([], []) body in
+  let own = StrSet.union (A.bv_params params) (StrSet.of_list declared) in
+  (not (escapes ~in_loop:false ~in_switch:false body))
+  && List.for_all (fun s -> StrSet.mem s own) written
+
 let parse_preproc_function_def helpers (func_def : preproc_function_def) =
   let ((loc1, _), name, params, body, (loc2, _)) = func_def in
   let name = U.token_to_string name in
@@ -253,10 +293,14 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
      [A.Vararg] so the macro types as [any -> ret] (see
      [PAst.param.Vararg]'s doc comment and [C_interface.is_variadic_params]).
 
-     When body parsing yields no usable [`Top_level_stmt] (most common cause:
-     simple wrapper macros like [#define KEEP(x) (x)] whose body is a bare
-     expression that tree-sitter cannot reparse standalone as a translation
-     unit), fall back to a declaration-style [Seq []] body. Combined with the
+     A macro body is an expression or a statement, and either only makes sense
+     inside a function: it is parsed as the body of a wrapper function, first
+     as an expression ([return (BODY);], the macro then returning its value,
+     e.g. [#define KEEP(x) PROTECT(x)] or [(x)]), else as a statement ([BODY;],
+     e.g. [do { ... } while (0)]). A body that parses but does not behave like
+     a function body ([behaves_like_function]) depends on the expansion site:
+     the macro is left unbound. When neither parses, fall back to a
+     declaration-style [Seq []] body. Combined with the
      [--fallback-c-signature] pipeline default, the macro still binds at
      [any -> any] instead of being dropped — preventing the cascade of
      "unbound variable" errors at call sites. *)
@@ -271,42 +315,42 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
         aux_prep_param p1 :: List.map (fun (_, p) -> aux_prep_param p) others
       ) params
     in
-    let param_names =
-      List.filter_map (function A.Param (_, n) -> Some n | A.Vararg -> None) params
-    in
     let pos_body = U.locs_to_pos end_param loc2 in
     let declaration_body = (pos_body, A.Seq []) in
-    let identity_body name_id = (pos_body, A.Return (Some (pos_body, A.Id name_id))) in
-    let body = match body with
-      | None -> (pos_body, A.Return None)
-      | Some (_loc3, comp) ->
-          (* Identity-macro detection: bodies like [(x)] or just [x] where
-             [x] is the (only) parameter — common pattern for [KEEP]-style
-             wrappers in rlang. Emit a real identity function so callers
-             type as [a -> a] rather than the looser [any -> any] fallback. *)
-          let stripped = strip_outer_parens comp in
-          if is_c_identifier stripped && List.mem stripped param_names then
-            identity_body stripped
-          else
-            let res = helpers.parse_string comp in
-            match res.program with
-            | None -> declaration_body
-            | Some tu ->
-                let items = List.filter_map (fun item ->
-                  match item with
-                  | `Top_level_stmt stmt -> Some (helpers.top_level_statement stmt)
-                  | _ ->
-                      if !warn_unsupported then begin
-                        Printf.printf "Not supported yet: top level item in define";
-                        Boilerplate.map_top_level_item () item |> Raw_tree.to_channel stdout
-                      end;
-                      None
-                ) tu in
-                (match items with
-                 | item :: _ -> item
-                 | [] -> declaration_body)
+    (* The body of [wrapper] when [src] parses without error. *)
+    let wrapper = "__nativesem_macro_body" in
+    let parse_in_function src =
+      let res = helpers.parse_string src in
+      if res.stat.error_count > 0 then None
+      else
+        match res.program with
+        | None -> None
+        | Some tu ->
+            helpers.parse_translation_unit tu
+            |> List.find_map (function
+                | _, A.Fundef (_, n, _, body) when n = wrapper -> Some body
+                | _ -> None)
     in
-    Some (U.locs_to_pos loc1 loc2, A.MacroDef (name, params, body))
+    let body = match body with
+      | None -> Some (pos_body, A.Return None)
+      | Some (_loc3, comp) ->
+          let as_expression = Printf.sprintf "int %s(void) { return (%s); }" wrapper comp in
+          let as_statement = Printf.sprintf "int %s(void) { %s; }" wrapper comp in
+          let function_like (body, inner) =
+            if behaves_like_function params inner then Some body
+            else None
+          in
+          (match parse_in_function as_expression with
+           | Some ((_, A.Return (Some e)) | (_, A.Block [ (_, A.Return (Some e)) ])
+                   as body) ->
+               function_like (body, e)
+           | _ ->
+               (match parse_in_function as_statement with
+                | Some body -> function_like (body, body)
+                | None -> Some declaration_body))
+    in
+    Option.map (fun body ->
+      (U.locs_to_pos loc1 loc2, A.MacroDef (name, params, body))) body
   with
   | Failure msg ->
       if !warn_unsupported then
