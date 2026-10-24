@@ -46,9 +46,12 @@ LOGICAL_RO: [v(LGL)] --> *c_int
 
 
 // Lengths are not tracked anymore; only the scalar case stays exact.
-LENGTH: ([vec1] --> c(1)) & ([vec] --> c_int) & ([p(CHR)] --> c_int) // length actually returns the length of the string (without '\0)
-XLENGTH: ([vec1] --> c(1)) & ([vec] --> c_int) & ([p(CHR)] --> c_int)
-xlength: ([vec1] --> c(1)) & ([vec] --> c_int) & ([p(CHR)] --> c_int)
+// LENGTH/XLENGTH accept every vector-like SEXP, lists (VECSXP, EXPRSXP)
+// included. Rf_xlength (xlength) works on any SEXP, like length below: 0 for
+// NULL, the pairlist length for LISTSXP/LANGSXP, 1 for the other non-vectors.
+LENGTH: ([vec1] --> c(1)) & ([vec] --> c_int) & ([p(CHR)] --> c_int) & ([list] --> c_int) // length actually returns the length of the string (without '\0)
+XLENGTH: ([vec1] --> c(1)) & ([vec] --> c_int) & ([p(CHR)] --> c_int) & ([list] --> c_int)
+xlength: ([vec1] --> c(1)) & ([vec] --> c_int) & ([null] --> c(0)) & ([sym | (empty -> any) | externalptr] --> c(1)) & ([any_sexp] --> c_int)
 envlength: [env] --> c_int
 nrows: [vec | list | expr | null | lang] --> c_int
 ncols: [vec | list | expr | null | lang] --> c_int
@@ -63,6 +66,11 @@ allocVector: (['a & prim, c(1)] --> v1('a)) & (['a & prim, c_int] --> v('a)) & (
 R_allocResizableVector: (['a & prim, c(1)] --> v1('a)) & (['a & prim, c_int] --> v('a)) & ([list, 'b] --> list) // we might have to support the special case as for the function above, but not the case yet
 allocSExp: ['a & any_r_not_vec] --> 'a
 install: [c_string] --> sym
+// Variable lookup. The result may be R_UnboundValue (findVar*) or
+// R_MissingArg, both SEXPs: any_sexp.
+findVar: [sym, env] --> any_sexp
+findVarInFrame: [env, sym] --> any_sexp
+findVarInFrame3: [env, sym, c_int] --> any_sexp
 
 // when the names are statically known, we can return a more precise type (handled on the OCaml side)
 mkNamed: (['a & prim, *c_string] --> v('a)) & ([list, *c_string] --> list)
@@ -145,7 +153,7 @@ R_Bracket2Symbol: sym
 R_DoubleColonSymbol: sym
 
 // R API: evaluation / binding
-Rf_eval: [any_sexp, env] --> any
+Rf_eval: [any_sexp, env] --> any_sexp
 Rf_defineVar: [sym, any_sexp, env] --> c_void
 Rf_GetOption1: [sym] --> any_sexp
 R_getVar: [sym, env, c_bool] --> any_sexp
@@ -185,6 +193,11 @@ R_new_altrep: [s({ ptr : any_sexp }), any_sexp, any_sexp] --> any_sexp
 // R API: misc
 R_CheckStack2: [c_int] --> c_void
 R_GetCCallable: [c_string, c_string] --> any
+// Routine registration, called from R_init_<pkg>. The DllInfo and method
+// tables are opaque here.
+R_registerRoutines: [any, any, any, any, any] --> c_int
+R_useDynamicSymbols: [any, c_int] --> c_int
+R_forceSymbols: [any, c_int] --> c_int
 MAYBE_REFERENCED: [any_sexp] --> c_int
 vmaxget: [] --> *any
 Rf_charIsASCII: [p(CHR)] --> c_bool
@@ -296,7 +309,11 @@ CDR: [lang] --> any_sexp
 >=__2: ([c_int, c_int] --> c_bool) & ([c_double, c_double] --> c_bool) & ([any, any] --> c_bool)
 
 // TODO: add more non vector types for the 2nd overload
-TYPEOF: ([v('a)] --> 'a) & (['b & ~vec & any_r_not_vec] --> 'b)
+// The non-vector arm covers every SEXP, not only any_r_not_vec: any_sexp's
+// attr component also holds attributed values of other kinds (S4 objects,
+// bytecode, ...), and without them TYPEOF rejects a value typed any_sexp, the
+// type of every SEXP bound at its C signature.
+TYPEOF: ([v('a)] --> 'a) & (['b & ~vec & (any_r_not_vec | any_sexp)] --> 'b)
 
 NA_INTEGER: c_int_na
 NA_LOGICAL: c_int_na

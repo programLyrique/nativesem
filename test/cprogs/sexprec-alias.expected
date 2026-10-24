@@ -1,8 +1,8 @@
-Rf_xlength: ([p(CHR)] --> c_int) & ([vec] --> c_int) & ([vec1] --> c_true)
+Rf_xlength: ([null] --> c_false) & ([vec1] --> c_true) & ([any_sexp] --> c_int) & ([(externalptr | arrow) | sym] --> c_true)
 
-r_length: ([vec1] -> c_true) & ([p(CHR) | vec] -> c_int)
+r_length: ([null] -> c_false) & ([any_sexp] -> c_int) & ([(externalptr | vec1 | arrow) | sym] -> c_true)
 
-my_length: ([vec1] -> c_true) & ([p(CHR) | vec] -> c_int)
+my_length: ([null] -> c_false) & ([any_sexp] -> c_int) & ([(externalptr | vec1 | arrow) | sym] -> c_true)
 
-raw_length: ([vec1] -> c_true) & ([p(CHR) | vec] -> c_int)
+raw_length: ([null] -> c_false) & ([any_sexp] -> c_int) & ([(externalptr | vec1 | arrow) | sym] -> c_true)
 

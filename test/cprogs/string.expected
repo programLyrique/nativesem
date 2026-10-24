@@ -4,7 +4,7 @@ create_str_from_chr: () -> "world"
 
 create_str_from_concat: () -> "hello world"
 
-get_c_string_from_str: ([CHR] -> c_string | c_null) & ([CHR1] -> c_string) & ([clx] -> c_null)
+get_c_string_from_str: ([CHR] -> c_string | c_null) & ([CHR1] -> c_string) & ([clx | list] -> c_null)
 
 is_blank_string: ([null] -> c_true) & ([null | p(CHR)] -> c_bool)
 

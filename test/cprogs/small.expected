@@ -4,7 +4,7 @@ errorIntScalar: [INT1] -> ()
 
 make_scalar: () -> INT1
 
-isIntScalar: ([INT] -> c_bool) & ([INT1] -> c_true) & ([(CHR | CLX | DBL | LGL | RAW) | p(CHR)] -> c_false)
+isIntScalar: ([INT] -> c_bool) & ([INT1] -> c_true) & ([((CHR | CLX | DBL | LGL | RAW) | list) | p(CHR)] -> c_false)
 
 check: () -> c_false
 
@@ -12,9 +12,9 @@ incr: [INT1] -> INT1
 
 isFunction: ([arrow] --> c_true) & ([~arrow] --> c_false)
 
-isPrimitive: ([any -> any] -> c_true) & ([((env | externalptr | lang | list | vec) | arrow \ (any -> any)) | null | p(CHR) | sym] -> c_false)
+isPrimitive: ([any -> any] -> c_true) & ([(~(any -> any))<...> | null | p(CHR) | sym] -> c_false)
 
-isList: ([(env | externalptr | list | vec | arrow) | p(CHR) | sym] -> c_false) & ([lang] | [null] -> c_true)
+isList: ([(~lang)<...> | p(CHR) | sym] -> c_false) & ([lang] | [null] -> c_true)
 
-isNewList: ([(env | externalptr | lang | vec | arrow) | p(CHR) | sym] -> c_false) & ([list] | [null] -> c_true)
+isNewList: ([(~list)<...> | p(CHR) | sym] -> c_false) & ([list] | [null] -> c_true)
 

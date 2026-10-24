@@ -4,3 +4,17 @@ pending_interrupt: () -> c_bool
 
 build_extptr: ([INT, any_sexp, any_sexp] -> externalptr(c_int_na)) & ([^INT1, any_sexp, any_sexp] -> externalptr(c_int))
 
+typeof_of_any_sexp: [externalptr] -> (~vec)<...> | null | prim | sym
+
+typeof_of_car: ([lang] -> (~vec)<...> | null | prim | sym) & ([(~lang)<...> | null | p(CHR) | sym] -> c_false)
+
+xlength_of_list: ([list] -> c_int) & ([(~list)<...> | null | p(CHR) | sym] -> c_false)
+
+last_list_elt: ∀'a. ([{ 'a }] -> 'a) & ([(~list)<...> | null | p(CHR) | sym] -> null)
+
+typeof_of_eval: [any_sexp, env] -> (~vec)<...> | null | prim | sym
+
+lookup: [sym, env] -> any_sexp
+
+R_init_rapi: [*any] -> ()
+
