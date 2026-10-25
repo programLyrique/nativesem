@@ -17,8 +17,9 @@ int use_twice(int x) { return TWICE(x); }
 #define NOT_C(x) x x x )
 
 /* Bodies whose meaning depends on the expansion site (the caller's labels,
-   loops and locals) are not functions: they stay unbound, so their callers
-   fail instead of getting a type for code they do not run. */
+   loops and locals) are not functions: a call is replaced by the body, the
+   arguments substituted for the parameters, as C does. TRY is not: goto is
+   not modeled, so it stays unbound. */
 #define TRY(x) do { if ((err = (x))) { goto exit; } } while (0)
 #define CHECK(x) if (!(x)) return -1
 #define STOP_IF(x) if (x) break
@@ -33,3 +34,9 @@ int use_try(int x) { int err = 0; TRY(x); exit: return err; }
 static SEXP placeholder = NULL;
 #define PRESERVE(X) (R_PreserveObject(placeholder = X), (void) NULL)
 void use_preserve(SEXP x) { PRESERVE(x); }
+
+int use_check(int x) { CHECK(x > 0); return x; }
+int use_stop(int n) { int i = 0; while (1) { STOP_IF(i >= n); i++; } return i; }
+#define CALL_ERR(f, ...) do { if (f(__VA_ARGS__)) return -1; } while (0)
+int g2(int a, int b);
+int use_call_err(int a, int b) { CALL_ERR(g2, a, b); return 0; }

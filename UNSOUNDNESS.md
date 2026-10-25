@@ -12,16 +12,11 @@ listed, except when they interact with one of the entries below.
 
 ## Control flow
 
-- **Labeled statements are dropped.** `aux_labeled_statement` (`parser.ml`)
-  replaces `label: stmt` by a no-op, statement included. In
-  `exit: return err;` the `return err` is never typed: its value is missing
-  from the function's result type, and an error in `stmt` goes unnoticed.
-  Only the statement attached to the label is lost; the following ones are
-  siblings and are typed.
 - **`goto` is a no-op.** `PAst.Goto` is lowered to a null constant
   (`PAst.aux_e`). The code after a `goto` is typed as if execution fell
   through, and a backward `goto` (a loop) is not a loop: the values reaching
-  its label along the back edge are not considered.
+  its label along the back edge are not considered. (A macro whose body
+  contains a `goto` is therefore not expanded, see below.)
 - **`case` on an unknown constant matches every integer.** In a `switch`
   (`Ast.aux_e`, `Switch`), a case label that is neither a literal nor a known
   constant gets the pattern `c_int_na`. Patterns are tried in order, so the
@@ -86,7 +81,9 @@ object is not kept in sync.
 ## Macros and preprocessing
 
 - **Function-like macros are typed as functions.** A macro whose body behaves
-  like a function body (`Preprocessor.behaves_like_function`) is bound as one:
+  like a function body (`Preprocessor.behaves_like_function`) is bound as one
+  (the others are expanded at their calls, `Preprocessor.expand_macro`, which
+  is C's semantics, except those with a `goto`, left unbound):
   its arguments are evaluated once, before the body, and the names in its
   body are resolved where the macro is defined. At an expansion they are
   evaluated as many times as they occur, possibly not at all, and the body's

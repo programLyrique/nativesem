@@ -24,3 +24,11 @@ PRESERVE: [any_sexp] -> c_void
 
 use_preserve: [any_sexp] -> ()
 
+use_check: ∀'a. ([c(1..) & 'a] -> c(1..) & 'a) & ([c_int_na \ c(1..) & 'a] -> c(-1))
+
+use_stop: [c_int_na] -> c_int
+
+g2: [c_int_na, c_int_na] --> c_int_na
+
+use_call_err: [c_int_na, c_int_na] -> c(-1..0)
+

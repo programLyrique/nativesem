@@ -1108,7 +1108,9 @@ and aux_call_expression (call: call_expression) =
       (* [NAME(...)] with [NAME] a function-like macro: an expansion. A
          parenthesized callee [(NAME)(...)] is a [Paren_exp], hence a call of
          the variable or function [NAME], as in C. *)
-      (pos, A.MacroCall (name, args_ast))
+      (match Preprocessor.expand_macro name args_ast with
+       | Some expansion -> expansion
+       | None -> (pos, A.MacroCall (name, args_ast)))
   | _ -> (pos, A.Call (func_ast, args_ast))
 and aux_argument (arg: anon_choice_exp_f079e30) =
   match arg with 
@@ -1175,6 +1177,18 @@ and aux_do_statement (do_stmt: do_statement) =
   let true_cond = (Mlsem.Common.Position.dummy, A.Const (A.CBool true)) in
   let break_stmt = (Mlsem.Common.Position.dummy, A.Break) in
   let cond_check = (Mlsem.Common.Position.dummy, A.If (cond_ast, (Mlsem.Common.Position.dummy, A.Const A.CNull), Some break_stmt)) in
+  (* [do { B } while (0)], the idiom of statement macros, runs [B] once: it is
+     [B] when no [break] or [continue] of [B] targets it. As a loop, the
+     paths where it does not run at all would be followed too. *)
+  let rec targets_loop (_, e as node) =
+    match e with
+    | A.Break | A.Next -> true
+    | A.While _ | A.For _ | A.Switch _ -> false
+    | _ -> List.exists targets_loop (A.children node)
+  in
+  match cond_ast with
+  | _, A.Const (A.CInt 0 | A.CBool false) when not (targets_loop body_ast) -> body_ast
+  | _ ->
   let loop_body = (pos, A.Seq [body_ast; cond_check]) in
   (pos, A.While (true_cond, loop_body))
 
@@ -1203,15 +1217,19 @@ and aux_switch_statement (switch_stmt: switch_statement) =
       (Position.join (loc_to_pos loc1) pos, A.Switch (expr, lst))
   | _ -> failwith "Unexpected body in switch statement"
 
-and aux_labeled_statement (((loc_label, label), (loc_colon, _), _body) as labeled_stmt : labeled_statement) =
-  if !warn_unsupported then begin
-    Printf.eprintf
-      "Not supported yet: labeled statement `%s`; ignoring labeled block/declarations and emitting Noop\n"
-      label;
-    let tree = Boilerplate.map_labeled_statement () labeled_stmt in
-    Raw_tree.to_channel stderr tree
-  end;
-  (locs_to_pos loc_label loc_colon, A.Const A.CNull)
+and aux_labeled_statement (((loc_label, label), (loc_colon, _), body) as labeled_stmt : labeled_statement) =
+  (* [label: stmt] is [stmt]: labels are not modeled ([goto] is a no-op), but
+     the statement must not be lost ([exit: return err;]). *)
+  match body with
+  | `Stmt stmt -> aux_statement stmt
+  | `Decl _ ->
+      if !warn_unsupported then begin
+        Printf.eprintf
+          "Not supported yet: declaration after label `%s`; emitting Noop\n" label;
+        let tree = Boilerplate.map_labeled_statement () labeled_stmt in
+        Raw_tree.to_channel stderr tree
+      end;
+      (locs_to_pos loc_label loc_colon, A.Const A.CNull)
 
 and aux_non_case_statement (stmt: non_case_statement) =
   match stmt with
@@ -2007,14 +2025,11 @@ let%test "void function does not duplicate explicit return" =
   | [(_, A.Fundef (Ast.Void, "f", [], (_, A.Return None)))] -> true
   | _ -> false
 
-let%test "labeled statements are ignored as Noop" =
-  let prev = !warn_unsupported in
-  Fun.protect
-    ~finally:(fun () -> set_warn_unsupported prev)
-    (fun () ->
-      set_warn_unsupported false;
-      let res = parse_string "int f() { label: { int x = 1; } return 0; }" in
-      match to_ast res with
-      | [(_, A.Fundef (Ast.Int, "f", [],
-          (_, A.Block [(_, A.Const A.CNull); (_, A.Return (Some (_, A.Const (A.CInt 0))))])))] -> true
-      | _ -> false)
+let%test "a labeled statement is its statement" =
+  let res = parse_string "int f() { exit: return 0; }" in
+  match to_ast res with
+  | [(_, A.Fundef (Ast.Int, "f", [],
+      (_, A.Return (Some (_, A.Const (A.CInt 0))))))]
+  | [(_, A.Fundef (Ast.Int, "f", [],
+      (_, A.Block [(_, A.Return (Some (_, A.Const (A.CInt 0))))])))] -> true
+  | _ -> false

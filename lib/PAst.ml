@@ -1097,36 +1097,38 @@ and translate_def ?self env key ret_ty name params body =
     let ret_ty = resolve_ctype env.decl ret_ty in
     (env.decl, Ast.Function (name, ret_ty, params, e, self))
 
-let map f e = 
-  let rec aux (pos, e) = 
-    let e = match e with 
+(** [f] applied to the immediate subexpressions of an expression. *)
+let map_children f (pos, e) =
+  let e = match e with
     | Const _ | Id _ | Break | Next | Goto _ -> e
-    | Unop (op, e1) -> Unop (op, aux e1)
-    | Binop (op, (e1, e2)) -> Binop (op, (aux e1, aux e2))
-    | VarDeclare (ty, e1) -> VarDeclare (ty, aux e1)
-    | VarAssign (e1, e2) -> VarAssign (aux e1, aux e2)
-    | FieldAccess (e, field) -> FieldAccess (aux e, field)
-    | Call (f, args) -> Call (aux f, List.map aux args)
-    | MacroCall (name, args) -> MacroCall (name, List.map aux args)
-    | If (cond, then_, else_) -> 
-        If (aux cond, aux then_, Option.map aux else_)
-    | Ite (cond, then_, else_) ->
-        Ite (aux cond, aux then_, aux else_)
-    | While (cond, body) -> While (aux cond, aux body)
+    | Unop (op, e1) -> Unop (op, f e1)
+    | Binop (op, (e1, e2)) -> Binop (op, (f e1, f e2))
+    | VarDeclare (ty, e1) -> VarDeclare (ty, f e1)
+    | VarAssign (e1, e2) -> VarAssign (f e1, f e2)
+    | FieldAccess (e, field) -> FieldAccess (f e, field)
+    | Call (g, args) -> Call (f g, List.map f args)
+    | MacroCall (name, args) -> MacroCall (name, List.map f args)
+    | If (cond, then_, else_) -> If (f cond, f then_, Option.map f else_)
+    | Ite (cond, then_, else_) -> Ite (f cond, f then_, f else_)
+    | While (cond, body) -> While (f cond, f body)
     | For (init, cond, incr, body) ->
-        For (aux init, Option.map aux cond, Option.map aux incr, aux body)
-    | Return e -> Return (Option.map aux e)
-    | Case (e1, e2) -> Case (aux e1, aux e2)
-    | Default e1 -> Default (aux e1)
-    | Switch (e1, cases) -> Switch (aux e1, List.map aux cases)
-    | Seq exprs -> Seq (List.map aux exprs)
-    | Block exprs -> Block (List.map aux exprs)
-    | Comma (e1, e2) -> Comma (aux e1, aux e2)
-    | Cast (ty, e) -> Cast (ty, aux e)
-    | CoerceNarrow (ty, e) -> CoerceNarrow (ty, aux e)
-    in
-    f (pos, e)
-  in aux e
+        For (f init, Option.map f cond, Option.map f incr, f body)
+    | Return e -> Return (Option.map f e)
+    | Case (e1, e2) -> Case (f e1, f e2)
+    | Default e1 -> Default (f e1)
+    | Switch (e1, cases) -> Switch (f e1, List.map f cases)
+    | Seq exprs -> Seq (List.map f exprs)
+    | Block exprs -> Block (List.map f exprs)
+    | Comma (e1, e2) -> Comma (f e1, f e2)
+    | Cast (ty, e) -> Cast (ty, f e)
+    | CoerceNarrow (ty, e) -> CoerceNarrow (ty, f e)
+  in
+  (pos, e)
+
+(** Bottom-up: [f] is applied to a node after its subexpressions. *)
+let map f e =
+  let rec aux e = f (map_children aux e) in
+  aux e
 
 (** Extract function call names from an expression.
     [fun_names] is the set of known function names; bare Id references

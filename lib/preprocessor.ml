@@ -50,6 +50,12 @@ let globals : StrSet.t ref = ref StrSet.empty
 
 let remember_global name = globals := StrSet.add name !globals
 
+(* The function-like macros whose body does not behave like a function body
+   ([behaves_like_function]): their meaning depends on the expansion site, so
+   a call is replaced by the body, the arguments substituted for the
+   parameters ([expand_macro], called by the parser). *)
+let expansions : (string, A.param list * A.e) Hashtbl.t = Hashtbl.create 16
+
 let remember_seen_define_name name =
   seen_define_names := StrSet.add name !seen_define_names
 
@@ -343,6 +349,7 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
                 | _, A.Fundef (_, n, _, body) when n = wrapper -> Some body
                 | _ -> None)
     in
+    Hashtbl.remove expansions name ;
     let body = match body with
       | None -> Some (pos_body, A.Return None)
       | Some (_loc3, comp) ->
@@ -350,7 +357,24 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
           let as_statement = Printf.sprintf "int %s(void) { %s; }" wrapper comp in
           let function_like (body, inner) =
             if behaves_like_function params inner then Some body
-            else None
+            else begin
+              (* A statement body expands in place: textual expansion opens no
+                 scope. A body with a [goto] stays unbound: [goto] is not
+                 modeled, so its expansion would follow the paths after the
+                 jump as if it had not happened (utf8's [TRY]). *)
+              let inner = match inner with
+                | pos, A.Block stmts -> (pos, A.Seq stmts)
+                | e -> e
+              in
+              let rec has_goto (_, e as node) =
+                match e with
+                | A.Goto _ -> true
+                | _ -> List.exists has_goto (A.children node)
+              in
+              if not (has_goto inner) then
+                Hashtbl.replace expansions name (params, inner) ;
+              None
+            end
           in
           (match parse_in_function as_expression with
            | Some ((_, A.Return (Some e)) | (_, A.Block [ (_, A.Return (Some e)) ])
@@ -358,7 +382,12 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
                function_like (body, e)
            | _ ->
                (match parse_in_function as_statement with
-                | Some body -> function_like (body, body)
+                | Some ((pos, _) as body) ->
+                    (* A statement macro has no value. *)
+                    let stmt = (pos, A.Seq [ body ; (pos, A.Return None) ]) in
+                    (match function_like (stmt, body) with
+                     | Some _ as b -> b
+                     | None -> None)
                 | None -> Some declaration_body))
     in
     Option.map (fun body ->
@@ -368,6 +397,75 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
       if !warn_unsupported then
         Printf.printf "Not supported yet: failed to parse preprocessor function body for %s: %s\n" name msg;
       None
+
+(* The expansion of [NAME(args)] when [NAME] is in [expansions]: its body,
+   the arguments substituted for the parameters (several times if a parameter
+   occurs several times, as in C). [__VA_ARGS__] stands for the arguments
+   after the named ones, spliced into an argument list. A parameter also
+   names a field ([p->F]) or a declared variable when its argument is an
+   identifier; when it is not, or with a wrong number of arguments, there is
+   no expansion. *)
+let expand_macro name args =
+  match Hashtbl.find_opt expansions name with
+  | None -> None
+  | Some (params, body) ->
+      let named = List.filter_map (function A.Param (_, n) -> Some n | A.Vararg -> None) params in
+      let variadic = List.mem A.Vararg params in
+      let n = List.length named in
+      if List.length args < n || (not variadic && List.length args > n) then None
+      else
+        let bound = List.combine named (List.filteri (fun i _ -> i < n) args) in
+        let extra = List.filteri (fun i _ -> i >= n) args in
+        let ident_of p = match List.assoc_opt p bound with
+          | Some (_, A.Id a) -> Some (Some a)
+          | Some _ -> Some None
+          | None -> None
+        in
+        let ok = ref true in
+        let splice args =
+          List.concat_map (function
+            | (_, A.Id "__VA_ARGS__") -> extra
+            | a -> [ a ]) args
+        in
+        let subst (pos, e) =
+          let e = match e with
+            | A.Call (f, args) -> A.Call (f, splice args)
+            | A.MacroCall (m, args) -> A.MacroCall (m, splice args)
+            | A.FieldAccess (r, f) ->
+                (match ident_of f with
+                 | Some (Some a) -> A.FieldAccess (r, a)
+                 | Some None -> ok := false ; e
+                 | None -> e)
+            | A.VarDeclare (ty, (p, A.Id d)) ->
+                (match ident_of d with
+                 | Some (Some a) -> A.VarDeclare (ty, (p, A.Id a))
+                 | Some None -> ok := false ; e
+                 | None -> e)
+            | e -> e
+          in
+          (pos, e)
+        in
+        (* Parameters first, top-down: a declared name or a field is not an
+           occurrence of the parameter as a value. *)
+        let rec values (pos, e) =
+          match e with
+          | A.Id p when List.mem_assoc p bound -> List.assoc p bound
+          | A.Id "__VA_ARGS__" when extra <> [] ->
+              List.fold_left (fun acc a -> (pos, A.Comma (acc, a))) (List.hd extra) (List.tl extra)
+          | A.Call (f, args) ->
+              (pos, A.Call (values f, List.concat_map (function
+                 | (_, A.Id "__VA_ARGS__") as a -> [ a ]
+                 | a -> [ values a ]) args))
+          | A.MacroCall (m, args) ->
+              (pos, A.MacroCall (m, List.concat_map (function
+                 | (_, A.Id "__VA_ARGS__") as a -> [ a ]
+                 | a -> [ values a ]) args))
+          | A.FieldAccess (r, f) -> (pos, A.FieldAccess (values r, f))
+          | A.VarDeclare (ty, d) -> (pos, A.VarDeclare (ty, d))
+          | _ -> A.map_children values (pos, e)
+        in
+        let body = values body |> A.map subst in
+        if !ok then Some body else None
 
 let parse_preproc_define (_callbacks : parser_callbacks) (prepoc : preproc_def) : A.top_level_unit option =
   let ((loc1, _), name_tok, value_opt, _nl) = prepoc in
@@ -667,6 +765,7 @@ and top_level_item_dispatch ~parser_callbacks ~top_level_item ~top_level_block_i
               its code-generating macros after use). *)
            let name = String.trim arg in
            function_macros := StrSet.remove name !function_macros;
+           Hashtbl.remove expansions name;
            seen_define_names := StrSet.remove name !seen_define_names;
            remove_define_constant name;
            A.remove_define_alias name;
