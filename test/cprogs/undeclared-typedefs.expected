@@ -1,0 +1,6 @@
+need_int: [c_int_na] --> c_int_na
+
+use_ssize: [c_int_na] -> c_int_na
+
+low_bits: [c_int_na] -> c_int
+

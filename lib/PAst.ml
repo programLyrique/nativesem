@@ -134,6 +134,7 @@ let rec bv_e in_lhs_assign (_,e) =
   | Break | Next | Goto _ | Const _ -> StrSet.empty
   | Id s when in_lhs_assign -> StrSet.singleton s
   | Id _ -> StrSet.empty
+  | Unop (("pre++" | "pre--" | "post++" | "post--"), e) -> bv_e true e
   | Unop (_, e) -> bv_e in_lhs_assign e
   | Binop (_, (e1,e2)) -> StrSet.union (bv_e in_lhs_assign e1) (bv_e in_lhs_assign e2)
   | VarAssign ((_,Id s), e2) -> (StrSet.singleton s) |> StrSet.union (bv_e in_lhs_assign e2)
@@ -466,12 +467,20 @@ let rec aux_const c =
 
 
 
+(* A fresh local holding an intermediate value of a lowering. '#' cannot occur
+   in a C identifier, so its name never clashes with the program's. *)
+let tmp_counter = ref 0
+let fresh_tmp env =
+  incr tmp_counter ;
+  let name = "tmp#" ^ string_of_int !tmp_counter in
+  let env', v = add_var_top env name in
+  (env', v, name)
+
 let rec aux_e env (pos,e) = 
   let eid = Eid.unique_with_pos pos in
   let e = match e with 
   | Const c -> Ast.Const (aux_const c)
   | Id s -> Ast.Id (var env s)
-  | Unop (op, e) -> Ast.Unop (var env (op ^ "__1"), aux_e env e)
   | Binop (("&&" | "||") as op, (e1, e2)) ->
       (* C's [&&] and [||] short-circuit: [b] is evaluated only when [a] does
          not decide. Lowered to conditionals, [a ? (b ? 1 : 0) : 0] and
@@ -483,66 +492,17 @@ let rec aux_e env (pos,e) =
       let (_, _, _, e) = aux_e env (pos, e) in
       e
   | Binop (op, (e1,e2)) -> Ast.Binop (var env (op ^ "__2"), aux_e env e1, aux_e env e2)
-  | VarAssign ((_,Id s), e2) ->
-      (* C's implicit [void* -> T*] conversion, as at an initialization (see
-         the parser's [CoerceNarrow]): assigned to a variable declared [T*],
-         [malloc]'s [c_ptr] is narrowed to [T*]. *)
-      let v = var env s in
-      let e2 = aux_e env e2 in
-      (match Ast.VarMap.find_opt v env.ctypes, e2 with
-       | _, (_, _, _, Ast.Const _) -> Ast.VarAssign (v, e2) (* already exact *)
-       | Some (Ast.Ptr t as ty), _ when t <> Ast.Void ->
-           Ast.VarAssign (v, fresh_e env (Ast.CoerceNarrow (ty, e2)))
-       | _, _ -> Ast.VarAssign (v, e2))
-  | VarAssign ((loc1, Call ((_,Id "[]"), ((_, Id base_name) :: _ as args))) ,e2) ->
-      (* Model arr[i] = v as a functional update arr = []<-(arr, i, v) so
-         subsequent reads can use the updated value. *)
-      Ast.VarAssign (
-        var env base_name,
-        fresh_e env (Ast.Call (
-          aux_e env (loc1, Id "[]<-"),
-          (List.map (aux_e env) args) @ [aux_e env e2]
-        ))
-      )
-  | VarAssign ((loc1, Call ((_,Id "[]"), args)) ,e2) ->
-      Ast.Call (
-        aux_e env (loc1, Id "[]<-"),
-        (List.map (aux_e env) args) @ [aux_e env e2]
-      )
-  | VarAssign ((_loc1, Unop (_op, _)) as lhs ,e2) ->
-      (* For [*p = e2] (and [&p = e2]), lower to [let tmp = *p in tmp := e2].
-         The read forces [p] to be a pointer to a type carrying e2's value;
-         the assignment lands on a fresh local so [p] itself is not rebound.
-         Imprecise (the new pointee value is not tracked at later reads),
-         but type-safe. *)
-      let read_e = aux_e env lhs in
-      let tmp = MVariable.create MVariable.Mut (Some "_deref") in
-      let assign_e = fresh_e env (Ast.VarAssign (tmp, aux_e env e2)) in
-      Ast.Let (tmp, read_e, assign_e)
-  | VarAssign ((_, FieldAccess (((_, Id s) as e1), field)) ,e2)
-    when is_block_local env s ->
-      (* Model [b.field = v] on a local struct variable as a functional update
-         rebinding the variable: [b = b with field = v]. Mirrors the [arr[i] =
-         v] case above. Without the rebind the [FieldUpdate] produces a fresh
-         record that is discarded, so later reads of [b] (and the field-by-field
-         lowering of a designated initializer [struct T b = { .field = v }]) see
-         the pre-update record and the field-read fails as an untypeable
-         projection.
-
-         Restricted to block-local variables ([is_block_local], i.e. declared
-         in a scope frame above the base frame). A file-scope global struct
-         ([struct syms syms; ... syms.f = v]) lives in the base frame; rebinding
-         it would replace its full declared record with the narrow record
-         accumulated from one function's writes, breaking later width-subtyping
-         uses (e.g. vctrs' [globals.c] / [vctrs_init_*]). Globals fall through to
-         the non-rebinding general arm below and keep their declared type.
-         Pointer writes [p->field = v] also fall through — they arrive with a
-         dereference ([Unop "*"]) as the base. *)
-      Ast.VarAssign (var env s,
-        fresh_e env (Ast.FieldUpdate (aux_e env e1, field, aux_e env e2)))
-  | VarAssign ((_, FieldAccess (e1, field)) ,e2) ->
-      Ast.FieldUpdate (aux_e env e1, field, aux_e env e2)
-  | VarAssign (_,_) -> failwith ("Unexpected left-hand side in assignment. Got: " ^ show_e (pos,e))
+  | VarAssign (lhs, e2) -> aux_assign_value env pos lhs e2
+  | Unop (("pre++" | "pre--") as op, lhs) ->
+      (* [++x]: [x = ++x], whose value is the new one. *)
+      aux_assign_value env pos lhs (pos, Unop (String.sub op 3 2, lhs))
+  | Unop (("post++" | "post--") as op, lhs) ->
+      (* [x++]: the old value, kept in a temporary, then [x = ++old]. *)
+      let env', old, old_name = fresh_tmp env in
+      let assign = aux_assign env' pos lhs (pos, Unop (String.sub op 4 2, (pos, Id old_name))) in
+      Ast.Let (old, aux_e env lhs,
+        fresh_e env' (Ast.Seq (fresh_e env' assign, fresh_e env' (Ast.Id old))))
+  | Unop (op, e) -> Ast.Unop (var env (op ^ "__1"), aux_e env e)
   | FieldAccess (e, field) -> Ast.FieldRead (aux_e env e, field)
   | Call (f, args) -> process_call env f args
   | MacroCall (name, args) ->
@@ -638,18 +598,38 @@ let rec aux_e env (pos,e) =
         | Return _ -> (true, body)
         | e -> (false, e)
       in
+      (* The body of a [switch] is one block: a variable declared in a case
+         without braces is in scope in the following cases. Its declarations
+         are registered in a frame for the whole [switch], as for a [for]. *)
+      let rec collect_decls acc = function
+        | _, VarDeclare (ty, (_, Id s)) -> (s, ty) :: acc
+        | _, Seq inner -> List.fold_left collect_decls acc inner
+        | _, (Case (_, body) | Default body) -> collect_decls acc body
+        | _ -> acc
+      in
+      let decls = List.rev (List.fold_left collect_decls [] cases) in
+      let env_sw, declared_vs =
+        List.fold_left
+          (fun (env, vs) (name, ty) ->
+            let env', v = add_var_top ~ty env name in
+            (env', v :: vs))
+          (push_scope env, [])
+          decls
+      in
       let aux_cases = function
-        | _,Case (case_e, body_e) -> 
-          let pos,b = body_e in 
-          let has_break,b = remove_break b in 
-           (aux_e env case_e, aux_e env (pos,b), has_break)
-        | _,Default body_e -> 
-          let pos,b = body_e in 
+        | _,Case (case_e, body_e) ->
+          let pos,b = body_e in
           let has_break,b = remove_break b in
-          (fresh_e env Ast.Noop, aux_e env (pos, b), has_break) 
+           (aux_e env_sw case_e, aux_e env_sw (pos,b), has_break)
+        | _,Default body_e ->
+          let pos,b = body_e in
+          let has_break,b = remove_break b in
+          (fresh_e env_sw Ast.Noop, aux_e env_sw (pos, b), has_break)
         | _ -> failwith "Invalid case in switch"
       in
-      Ast.Switch (aux_e env e, List.map aux_cases cases)
+      let switch = fresh_e env (Ast.Switch (aux_e env e, List.map aux_cases cases)) in
+      List.fold_right (fun v acc -> fresh_e env (Ast.Declare (v, acc))) (List.rev declared_vs) switch
+      |> (fun (_, _, _, e) -> e)
   | Case _ | Default _ -> failwith "Case and Default should be inside a switch"
   | Seq [] -> Ast.Const Ast.CNull
   | Seq (e::es) ->
@@ -688,6 +668,85 @@ let rec aux_e env (pos,e) =
   | VarDeclare (_, _) -> failwith "Declaration must have an identifier" (*Should be unreachable*)
   in
     mk_e env eid e
+(* An assignment, as an expression: C gives it the value assigned, which
+   conditions use ([if ((err = f(x)))], [while ((n = read(...)) > 0)]). For a
+   variable, the value is the variable read back (after the [void* -> T*]
+   narrowing); otherwise, the right-hand side, evaluated once into a
+   temporary. *)
+and aux_assign_value env pos lhs e2 =
+  match lhs with
+  | (_, Id s) ->
+      Ast.Seq (fresh_e env (aux_assign env pos lhs e2), fresh_e env (Ast.Id (var env s)))
+  | _ ->
+      let env', v, v_name = fresh_tmp env in
+      Ast.Let (v, aux_e env e2,
+        fresh_e env' (Ast.Seq (fresh_e env' (aux_assign env' pos lhs (pos, Id v_name)),
+                               fresh_e env' (Ast.Id v))))
+(* The assignment [lhs = e2] itself, as a statement. *)
+and aux_assign env pos lhs e2 =
+  let e = VarAssign (lhs, e2) in
+  match e with
+  | VarAssign ((_,Id s), e2) ->
+      (* C's implicit [void* -> T*] conversion, as at an initialization (see
+         the parser's [CoerceNarrow]): assigned to a variable declared [T*],
+         [malloc]'s [c_ptr] is narrowed to [T*]. *)
+      let v = var env s in
+      let e2 = aux_e env e2 in
+      (match Ast.VarMap.find_opt v env.ctypes, e2 with
+       | _, (_, _, _, Ast.Const _) -> Ast.VarAssign (v, e2) (* already exact *)
+       | Some (Ast.Ptr t as ty), _ when t <> Ast.Void ->
+           Ast.VarAssign (v, fresh_e env (Ast.CoerceNarrow (ty, e2)))
+       | _, _ -> Ast.VarAssign (v, e2))
+  | VarAssign ((loc1, Call ((_,Id "[]"), ((_, Id base_name) :: _ as args))) ,e2) ->
+      (* Model arr[i] = v as a functional update arr = []<-(arr, i, v) so
+         subsequent reads can use the updated value. *)
+      Ast.VarAssign (
+        var env base_name,
+        fresh_e env (Ast.Call (
+          aux_e env (loc1, Id "[]<-"),
+          (List.map (aux_e env) args) @ [aux_e env e2]
+        ))
+      )
+  | VarAssign ((loc1, Call ((_,Id "[]"), args)) ,e2) ->
+      Ast.Call (
+        aux_e env (loc1, Id "[]<-"),
+        (List.map (aux_e env) args) @ [aux_e env e2]
+      )
+  | VarAssign ((_loc1, Unop (_op, _)) as lhs ,e2) ->
+      (* For [*p = e2] (and [&p = e2]), lower to [let tmp = *p in tmp := e2].
+         The read forces [p] to be a pointer to a type carrying e2's value;
+         the assignment lands on a fresh local so [p] itself is not rebound.
+         Imprecise (the new pointee value is not tracked at later reads),
+         but type-safe. *)
+      let read_e = aux_e env lhs in
+      let tmp = MVariable.create MVariable.Mut (Some "_deref") in
+      let assign_e = fresh_e env (Ast.VarAssign (tmp, aux_e env e2)) in
+      Ast.Let (tmp, read_e, assign_e)
+  | VarAssign ((_, FieldAccess (((_, Id s) as e1), field)) ,e2)
+    when is_block_local env s ->
+      (* Model [b.field = v] on a local struct variable as a functional update
+         rebinding the variable: [b = b with field = v]. Mirrors the [arr[i] =
+         v] case above. Without the rebind the [FieldUpdate] produces a fresh
+         record that is discarded, so later reads of [b] (and the field-by-field
+         lowering of a designated initializer [struct T b = { .field = v }]) see
+         the pre-update record and the field-read fails as an untypeable
+         projection.
+
+         Restricted to block-local variables ([is_block_local], i.e. declared
+         in a scope frame above the base frame). A file-scope global struct
+         ([struct syms syms; ... syms.f = v]) lives in the base frame; rebinding
+         it would replace its full declared record with the narrow record
+         accumulated from one function's writes, breaking later width-subtyping
+         uses (e.g. vctrs' [globals.c] / [vctrs_init_*]). Globals fall through to
+         the non-rebinding general arm below and keep their declared type.
+         Pointer writes [p->field = v] also fall through — they arrive with a
+         dereference ([Unop "*"]) as the base. *)
+      Ast.VarAssign (var env s,
+        fresh_e env (Ast.FieldUpdate (aux_e env e1, field, aux_e env e2)))
+  | VarAssign ((_, FieldAccess (e1, field)) ,e2) ->
+      Ast.FieldUpdate (aux_e env e1, field, aux_e env e2)
+  | VarAssign (_,_) -> failwith ("Unexpected left-hand side in assignment. Got: " ^ show_e (pos,e))
+  | _ -> assert false
 and aux_block env stmts =
   (* Translate the statements of a [Block] in their scope frame. Each
      [VarDeclare] extends the topmost frame for the rest of the block and

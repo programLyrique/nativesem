@@ -245,7 +245,9 @@ let typeof_ctype ct =
     | Ptr ty -> Cptr.mk_nonstring (aux ty)
     | SEXP -> Defs.any_sexp
     | Any -> Ty.any
-    | Typeref _ -> Ty.any
+    | Typeref name ->
+        (* A typedef the parsed code does not declare: its [.ty] typedef. *)
+        Hashtbl.find_opt Type_parser.typedefs name |> Option.value ~default:Ty.any
     | Struct ("", []) -> Record.mk_closed [] (* the seed of a designated initializer *)
     | Struct (name, fields) ->
         let name = "struct " ^ name in
@@ -705,6 +707,13 @@ let rec aux_e (eid, _decl, vars, e) =
         (* We start from the reverse list because we want to merge bodies of cases with the one 
         before when there is a break. So we start with the default case, then the one before
          and so on *)
+        (* Without a [default], C does nothing for the other values. *)
+        let cases =
+          if List.exists (function (_, _, _, Noop), _, _ -> true | _ -> false) cases
+          then cases
+          else cases @ [ ((Eid.unique (), DeclMap.empty, vars, Noop),
+                          (Eid.unique (), DeclMap.empty, vars, Noop), true) ]
+        in
         A.PatMatch (e, List.fold_left make_pattern_case [] (List.rev cases))
     | Break -> A.Break
     | Next -> A.Break
@@ -797,6 +806,25 @@ let rec aux_e (eid, _decl, vars, e) =
       | Some "%__2", CInt a, CInt b -> if b = 0 then None else Some (CInt (a mod b))
       | _ -> None
     in
+
+    (* The constants known after either of two paths: those both agree on. *)
+    let merge env1 env2 =
+      VarMap.merge (fun _ k1 k2 ->
+        match k1, k2 with
+        | Some k1, Some k2 when k1 = k2 -> Some k1
+        | _ -> None) env1 env2
+    in
+    (* The variables [e] assigns. Before a loop, they are unknown: the loop
+       may have run any number of times (and a [switch] case may be reached
+       from another one). *)
+    let assigned e =
+      let vs = ref [] in
+      ignore (map (fun ((_, _, _, e') as node) ->
+        (match e' with VarAssign (v, _) -> vs := v :: !vs | _ -> ()) ;
+        node) e) ;
+      !vs
+    in
+    let forget vs env = List.fold_left (fun env v -> VarMap.remove v env) env vs in
 
     (* Returns (transformed_expr, updated_env, value_of_expr) where value_of_expr
        is the known kind (constant or label list) of the expression, if any. *)
@@ -918,23 +946,24 @@ let rec aux_e (eid, _decl, vars, e) =
           let then_', env2, _ = aux then_ env1 in
           let else_', env3 =
             match else_ with
-            | None -> (None, env2)
+            | None -> (None, env1)
             | Some e3 ->
-                let e3', env3, _ = aux e3 env2 in
+                let e3', env3, _ = aux e3 env1 in
                 (Some e3', env3)
           in
-          ((id, decl, env, If (cond', then_', else_')), env3, None)
+          ((id, decl, env, If (cond', then_', else_')), merge env2 env3, None)
 
       | Ite (cond, then_, else_) ->
           let cond', env1, _ = aux cond env in
           let then_', env2, _ = aux then_ env1 in
-          let else_', env3, _ = aux else_ env2 in
-          ((id, decl, env, Ite (cond', then_', else_')), env3, None)
+          let else_', env3, _ = aux else_ env1 in
+          ((id, decl, env, Ite (cond', then_', else_')), merge env2 env3, None)
 
       | While (cond, body) ->
-          let cond', env1, _ = aux cond env in
-          let body', env2, _ = aux body env1 in
-          ((id, decl, env, While (cond', body')), env2, None)
+          let env0 = forget (assigned cond @ assigned body) env in
+          let cond', env1, _ = aux cond env0 in
+          let body', _, _ = aux body env1 in
+          ((id, decl, env, While (cond', body')), env1, None)
 
       | Seq (e1, e2) ->
           let e1', env1, _ = aux e1 env in
@@ -970,16 +999,17 @@ let rec aux_e (eid, _decl, vars, e) =
 
       | Switch (e1, cases) ->
           let e1', env1, _ = aux e1 env in
-          let cases', env' =
-            List.fold_left
-              (fun (acc_cases, acc_env) (case_e, body_e, has_break) ->
-                let case_e', envc, _ = aux case_e acc_env in
-                let body_e', envb, _ = aux body_e envc in
-                (acc_cases @ [ (case_e', body_e', has_break) ], envb))
-              ([], env1)
+          let env1 =
+            forget (List.concat_map (fun (_, body_e, _) -> assigned body_e) cases) env1
+          in
+          let cases' =
+            List.map (fun (case_e, body_e, has_break) ->
+                let case_e', envc, _ = aux case_e env1 in
+                let body_e', _, _ = aux body_e envc in
+                (case_e', body_e', has_break))
               cases
           in
-          ((id, decl, env, Switch (e1', cases')), env', None)
+          ((id, decl, env, Switch (e1', cases')), env1, None)
     in
     let e', _, _ = aux e VarMap.empty in
     e'

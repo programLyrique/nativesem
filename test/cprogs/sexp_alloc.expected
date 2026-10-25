@@ -7,4 +7,4 @@ alloc_double_define: ([c_int] -> DBL) & ([c_true] -> DBL1)
 alloc_oob:
 untypeable: untypeable application
 function: ([list, any] --> list) & ([p(CHR), c_true] --> "") & ([prim & 'I22, c_int] --> vec & v('I22)) & ([prim & 'I22, c_true] --> vec1 & v1('I22))
-argument: [c(99), 'I18]
+argument: [c(99), c_int_na & 'I18]

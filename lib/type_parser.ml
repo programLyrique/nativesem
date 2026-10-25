@@ -8,7 +8,7 @@ The type itself is parsed using rstt
 *)
 open Rstt
 
-type type_kind = Def | Alias
+type type_kind = Def | Alias | Typedef
 
 let parse_type_line ?(filename="<input>") ?(lineno=0) line =
   (* Remove inline comments: everything after // is ignored.
@@ -21,6 +21,12 @@ let parse_type_line ?(filename="<input>") ?(lineno=0) line =
       line
   in
   let line = String.trim line in
+  (* [typedef NAME = type]: a C typedef (see [typedefs]). *)
+  let is_typedef, line =
+    match String.starts_with ~prefix:"typedef " line with
+    | true -> true, String.trim (String.sub line 8 (String.length line - 8))
+    | false -> false, line
+  in
   if line = "" || String.starts_with ~prefix:"//" line then
     None
   else
@@ -49,6 +55,7 @@ let parse_type_line ?(filename="<input>") ?(lineno=0) line =
         in
         match sep with
         | ':' -> Some (String.trim sym, ty, Def)
+        | '=' when is_typedef -> Some (String.trim sym, ty, Typedef)
         | '=' -> Some (String.trim sym, ty, Alias)
         | _ -> failwith "Unreachable case in parse_type_line."
 
@@ -68,6 +75,12 @@ let add_struct_guards t =
     | t -> t
   in
   map aux Fun.id Fun.id t
+
+(* The C typedefs of the [.ty] files ([typedef NAME = type]), by name. A
+   typedef that the parsed code does not declare (it comes from a header that
+   is not parsed, such as [Rinternals.h]) takes this type, if any (see
+   [Ast.typeof_ctype]). Unlike an alias, it is neither printed nor bound. *)
+let typedefs : (string, Sstt.Ty.t) Hashtbl.t = Hashtbl.create 32
 
 let build_types ti_map env type_list = 
   List.fold_left (fun acc (sym, ty, kind) ->
@@ -93,7 +106,11 @@ let build_types ti_map env type_list =
     let ty = build ti_map ty in
     let ti_map = if kind = Alias then TIdMap.add id ty ti_map else ti_map in
     (* Register the alias for the printer *)
-    if kind = Alias then Mlsem.Types.PEnv.register sym ty; 
+    if kind = Alias then Mlsem.Types.PEnv.register sym ty ;
+    if kind = Typedef then begin
+      Hashtbl.replace typedefs sym ty ;
+      (ty_env, ti_map, env)
+    end else
     (StrMap.add sym ty ty_env, ti_map, env)
     ) (Builder.StrMap.empty, ti_map, env) type_list
 

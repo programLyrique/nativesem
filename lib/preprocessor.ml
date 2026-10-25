@@ -280,7 +280,8 @@ let behaves_like_function params body =
   let rec fold (written, declared) e =
     let acc =
       match snd e with
-      | A.VarAssign (lhs, _) | A.Unop (("++" | "--"), lhs) ->
+      | A.VarAssign (lhs, _)
+      | A.Unop (("pre++" | "pre--" | "post++" | "post--"), lhs) ->
           (root lhs @ written, declared)
       | A.VarDeclare (_, (_, A.Id s)) -> (written, s :: declared)
       | _ -> (written, declared)

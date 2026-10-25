@@ -6,7 +6,7 @@ checkList: ([list] -> c_true) & ([(~list)<...> | null | p(CHR) | sym] -> c_false
 
 isVectorList: ∀'a. ([list] --> c_true) & ([(env | externalptr | lang | vec & v('a) | arrow) | null | p(CHR) | sym] --> c_false)
 
-length2: ([vec1] -> c_true) & ([null<...>] | [lang | null] -> c_false) & ([vec] | [list | p(CHR)] -> c_int)
+length2: ([vec1] -> c_true) & ([null] | [null<...>] -> c_false) & ([vec] | [lang | null] | [list | p(CHR)] -> c_int)
 
 length3: ([null<...>] -> c_false) & ([CHR] | [CLX] | [DBL] | [INT] | [LGL] | [p(CHR)] | [raw] -> c_int) & ([CHR1] | [CLX1] | [DBL1] | [INT1] | [LGL1] | [raw1] | [(~(null | vec))<...> | null | sym] -> c_true)
 

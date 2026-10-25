@@ -485,3 +485,25 @@
  (deps    cprogs/macro-bodies.c cprogs/macro-bodies.expected)
  (action  (diff cprogs/macro-bodies.expected macro-bodies.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/undeclared-typedefs.c)
+ (action  (with-stdout-to undeclared-typedefs.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/undeclared-typedefs.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/undeclared-typedefs.c cprogs/undeclared-typedefs.expected)
+ (action  (diff cprogs/undeclared-typedefs.expected undeclared-typedefs.output)))
+
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/flow.c)
+ (action  (with-stdout-to flow.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/flow.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/flow.c cprogs/flow.expected)
+ (action  (diff cprogs/flow.expected flow.output)))
+

@@ -27,6 +27,16 @@ any_sexp = p(CHR) | attr | null | sym //
 // This is maybe too unconstrained as sexp can have content be a C type, not only a R type. 
 // Maybe it would be better to tighten Defs.any_sexp...
 
+
+// R's own C typedefs, from headers that are not parsed (Rinternals.h,
+// R_ext/Boolean.h, ...). An undeclared typedef takes the type given
+// here.
+typedef R_xlen_t = c_int_na
+typedef R_len_t = c_int_na
+typedef R_size_t = c_int_na
+typedef Rbyte = c_int_na
+typedef Rboolean = c_bool
+
 error: any --> empty
 fail: empty --> any
 

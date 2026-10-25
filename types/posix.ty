@@ -1,3 +1,26 @@
+// <stdint.h> / <stddef.h> integer typedefs that tree-sitter does not parse as
+// primitive types (size_t, int32_t, ptrdiff_t, ... are), for when the header
+// declaring them is not parsed. An undeclared typedef takes the type given here.
+typedef int_fast8_t = c_int_na
+typedef int_fast16_t = c_int_na
+typedef int_fast32_t = c_int_na
+typedef int_fast64_t = c_int_na
+typedef uint_fast8_t = c_int_na
+typedef uint_fast16_t = c_int_na
+typedef uint_fast32_t = c_int_na
+typedef uint_fast64_t = c_int_na
+typedef int_least8_t = c_int_na
+typedef int_least16_t = c_int_na
+typedef int_least32_t = c_int_na
+typedef int_least64_t = c_int_na
+typedef uint_least8_t = c_int_na
+typedef uint_least16_t = c_int_na
+typedef uint_least32_t = c_int_na
+typedef uint_least64_t = c_int_na
+typedef intmax_t = c_int_na
+typedef uintmax_t = c_int_na
+typedef wchar_t = c_int_na
+
 // POSIX constants (all c_int)
 STDIN_FILENO: c_int
 STDOUT_FILENO: c_int

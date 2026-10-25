@@ -1,0 +1,20 @@
+post_inc: () -> c_int
+
+post_value: () -> c_false
+
+pre_value: () -> c_int
+
+chain: () -> c(3)
+
+assign_cond: ∀'a. ([() --> c_false & 'a] -> c_false) & ([() --> c_int_na & 'a] -> c_false | 'a \ c_null) & ([() --> c_int_na \ c_false & 'a] -> 'a & (c_int_na \ c_false | c_ptr \ c_null))
+
+after_if: [c_false] | [c_int_na \ c_false] -> c_int
+
+else_branch: ([c_false] -> c(11)) & ([c_int_na \ c_false] -> c(2))
+
+loop_count: [c_int_na] -> c_int
+
+counter: () -> c_int_na
+
+switch_scope: ([c(2)] -> c_false | c(6)) & ([c_int_na \ c(1..2)] -> c_false) & ([c_true] -> c_false | c(4))
+

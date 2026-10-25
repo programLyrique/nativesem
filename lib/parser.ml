@@ -1059,14 +1059,15 @@ and aux_field_expression (field_expr: field_expression) =
   in
   (pos, A.FieldAccess (base, field_name))
 and aux_update_expression (e: update_expression) =
-  (* For typing purposes, we don't care about whether it is pre or post incr/decr*)
-  let (op,e) = match e with
-  | `Choice_DASHDASH_exp (op, e) -> (op, aux_expression e)
-  | `Exp_choice_DASHDASH (e,op) -> (op, aux_expression e)
+  (* [pre++] / [post++]: PAst lowers them to assignments, whose value is the
+     new or the old one. *)
+  let (fix, op, e) = match e with
+  | `Choice_DASHDASH_exp (op, e) -> ("pre", op, aux_expression e)
+  | `Exp_choice_DASHDASH (e,op) -> ("post", op, aux_expression e)
   in
-  let op = match op with 
-    | `DASHDASH (loc, _) -> (loc, "--")
-    | `PLUSPLUS (loc, _) -> (loc, "++")
+  let op = match op with
+    | `DASHDASH (loc, _) -> (loc, fix ^ "--")
+    | `PLUSPLUS (loc, _) -> (loc, fix ^ "++")
   in
   let pos = Position.join (loc_to_pos (fst op)) (fst e) in
   (pos, A.Unop (snd op, e))
@@ -1459,7 +1460,22 @@ and aux_declaration typ (decl: anon_choice_opt_ms_call_modi_decl_decl_opt_gnu_as
       (Mlsem.Common.Position.dummy, A.VarDeclare (typ, (Mlsem.Common.Position.dummy, A.Id name)))
 and aux_declarations ((decl_type, decl1, decls, _loc2): declaration) =
   let typ = aux_decl_spec decl_type in
-  (Mlsem.Common.Position.dummy, A.Seq ((aux_declaration typ decl1) :: (List.map (fun (_, d) -> aux_declaration typ d) decls)))
+  (* A [static] local keeps its value from one call to the next: on entry, it
+     holds any value of its type, not its initializer (which only sets the
+     value of the first call). *)
+  let static_value d =
+    match d with
+    | _, A.Seq ((p, A.VarDeclare (ty, ((_, A.Id _) as name))) :: _)
+    | (p, A.VarDeclare (ty, ((_, A.Id _) as name))) ->
+        let any_value = (p, A.Cast (ty, (p, A.Const A.CNull))) in
+        (p, A.Seq [ (p, A.VarDeclare (ty, name)) ; (p, A.VarAssign (name, any_value)) ])
+    | d -> d
+  in
+  let aux d =
+    let d = aux_declaration typ d in
+    if aux_global_linkage decl_type = A.Static then static_value d else d
+  in
+  (Mlsem.Common.Position.dummy, A.Seq (aux decl1 :: List.map (fun (_, d) -> aux d) decls))
 (* Returns (return_ptr_level, name, fp_signature_opt). When the third
    component is [Some (params, variadic)] the declarator names a function
    pointer (or a local function prototype, which we model the same way);
