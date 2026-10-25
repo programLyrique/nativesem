@@ -128,6 +128,23 @@ let bv_params params =
     | Vararg -> None) params
   |> StrSet.of_list
 
+(** The immediate subexpressions of an expression, in source order. *)
+let children (_, e) =
+  match e with
+  | Const _ | Id _ | Break | Next | Goto _ | Return None -> []
+  | Unop (_, e1) | VarDeclare (_, e1) | FieldAccess (e1, _) | Default e1
+  | Cast (_, e1) | CoerceNarrow (_, e1) | Return (Some e1) -> [e1]
+  | Binop (_, (e1, e2)) | VarAssign (e1, e2) | Case (e1, e2) | Comma (e1, e2)
+  | While (e1, e2) -> [e1; e2]
+  | Call (f, args) -> f :: args
+  | MacroCall (_, args) -> args
+  | If (cond, then_, else_) -> cond :: then_ :: Option.to_list else_
+  | Ite (cond, then_, else_) -> [cond; then_; else_]
+  | For (init, cond, incr, body) ->
+      (init :: Option.to_list cond) @ Option.to_list incr @ [body]
+  | Switch (e1, cases) -> e1 :: cases
+  | Seq es | Block es -> es
+
 (** Extract variables from an expression*)
 let rec bv_e in_lhs_assign (_,e) = 
   match e with 
@@ -229,6 +246,9 @@ type env = {
   decl: Ast.ctype Ast.DeclMap.t;
   ctypes: Ast.ctype Ast.VarMap.t;
     (** The declared (resolved) C types of the parameters and locals. *)
+  cells: bool StrMap.t;
+    (** The integer variables of the function being lowered that get an
+        annotated cell, with whether it is [c_int] (see [annotated_cells]). *)
 }
 
 (* [resolve_ctype] expands Typerefs and empty-struct forward references by
@@ -419,7 +439,14 @@ let push_scope env = {env with id = NameMap.empty :: env.id}
 (** Bind [str] to a fresh [Variable.t] in the topmost scope frame of [env].
     Returns the updated env and the new variable. *)
 let add_var_top ?ty env str =
-  let v = MVariable.create MVariable.Mut (Some str) in
+  let kind =
+    match ty, StrMap.find_opt str env.cells with
+    | Some Ast.Int, Some never_na ->
+        let cell = if never_na then Rstt.Cint.any else Rstt.Cint.any_na in
+        MVariable.AnnotMut (GTy.mk cell)
+    | _ -> MVariable.Mut
+  in
+  let v = MVariable.create kind (Some str) in
   let id = match env.id with
     | [] -> [NameMap.singleton (Name.Ident str) v]
     | top :: rest -> NameMap.add (Name.Ident str) v top :: rest
@@ -469,6 +496,113 @@ let rec aux_const c =
 
 (* A fresh local holding an intermediate value of a lowering. '#' cannot occur
    in a C identifier, so its name never clashes with the program's. *)
+(* The integer variables of a function body that get an annotated cell
+   ([MVariable.AnnotMut]) instead of an unannotated one, with whether they are
+   never NA. An unannotated mutable variable assigned in a loop has a cell
+   typed by an inference variable, and each overloaded operation on its value
+   ([i + 1], [i < n]) splits on that variable: inference becomes exponential in
+   the number of such operations. A variable that a loop assigns, declared
+   outside it (so its value reaches the next iteration), gets a cell of fixed
+   type instead: [c_int] when every assignment to it gives an integer that
+   cannot be NA (constants, comparisons, arithmetic on such variables),
+   [c_int_na] when it may be NA and is computed from itself. Variables are
+   identified by name: shadowing only makes the analysis more conservative. *)
+let annotated_cells params body =
+  (* The names assigned in a loop and declared outside it (innermost loop). *)
+  let carried = ref StrSet.empty in
+  let assigned_in name in_loop local =
+    if in_loop && not (StrSet.mem name local) then carried := StrSet.add name !carried
+  in
+  let rec walk in_loop local ((_, e) as node) =
+    match e with
+    | While (c, b) ->
+        ignore (List.fold_left (fun local e -> walk true local e) StrSet.empty [ c ; b ]) ;
+        local
+    | For (init, c, incr, b) ->
+        let local = walk in_loop local init in
+        let loop_parts = Option.to_list c @ Option.to_list incr @ [ b ] in
+        ignore (List.fold_left (fun local e -> walk true local e) StrSet.empty loop_parts) ;
+        local
+    | VarDeclare (_, (_, Id s)) -> if in_loop then StrSet.add s local else local
+    | VarAssign ((_, Id s), e2) -> assigned_in s in_loop local ; walk in_loop local e2
+    | Unop (("pre++" | "pre--" | "post++" | "post--"), (_, Id s)) ->
+        assigned_in s in_loop local ; local
+    | _ -> List.fold_left (walk in_loop) local (children node)
+  in
+  ignore (walk false StrSet.empty body) ;
+  (* The declared [int]s among them. *)
+  let ints = Hashtbl.create 16 in
+  let rec decls (_, e as node) =
+    (match e with
+     | VarDeclare (Ast.Int, (_, Id s)) -> Hashtbl.replace ints s ()
+     | _ -> ()) ;
+    List.iter decls (children node)
+  in
+  decls body ;
+  let params_ints = List.filter_map (function Param (Ast.Int, n) -> Some n | _ -> None) params in
+  List.iter (fun n -> Hashtbl.replace ints n ()) params_ints ;
+  let cells = StrSet.filter (Hashtbl.mem ints) !carried in
+  (* What is assigned to each of them, anywhere in the function. A parameter
+     also receives the caller's value, which may be NA. *)
+  let rhs = Hashtbl.create 16 in
+  let rec collect (_, e as node) =
+    (match e with
+     | VarAssign ((_, Id s), e2) when StrSet.mem s cells -> Hashtbl.add rhs s (Some e2)
+     | _ -> ()) ;
+    List.iter collect (children node)
+  in
+  collect body ;
+  List.iter (fun n -> if StrSet.mem n cells then Hashtbl.add rhs n None) params_ints ;
+  let rec never_na nn (_, e) =
+    match e with
+    | Const (CInt _ | CBool _) -> true
+    | Id x -> StrSet.mem x nn
+    | Unop ("-", e) -> never_na nn e
+    | Unop ("!", _) -> true
+    | Unop (("pre++" | "pre--" | "post++" | "post--"), (_, Id x)) -> StrSet.mem x nn
+    | Binop (("<" | ">" | "<=" | ">=" | "==" | "!=" | "&&" | "||"), _) -> true
+    | Binop (("+" | "-" | "*" | "/" | "%" | "<<" | ">>" | "&" | "|" | "^"), (a, b)) ->
+        never_na nn a && never_na nn b
+    | Ite (_, a, b) -> never_na nn a && never_na nn b
+    | Comma (_, b) -> never_na nn b
+    | VarAssign (_, e) -> never_na nn e
+    | _ -> false
+  in
+  let rec fix nn =
+    let nn' =
+      StrSet.filter (fun s ->
+        Hashtbl.find_all rhs s
+        |> List.for_all (function Some e -> never_na nn e | None -> false)) nn
+    in
+    if StrSet.equal nn nn' then nn else fix nn'
+  in
+  let nn = fix cells in
+  (* The others keep an unannotated cell, whose value inference can refine
+     (from the contents of a parameter, say), unless the variable is computed
+     from itself ([n = n - 1], [len--]): that is what makes inference
+     exponential. *)
+  let rec mentions s (_, e as node) =
+    match e with
+    | Id x -> x = s
+    | _ -> List.exists (mentions s) (children node)
+  in
+  let self_dependent s =
+    Hashtbl.find_all rhs s |> List.exists (function Some e -> mentions s e | None -> false)
+  in
+  let incremented = ref StrSet.empty in
+  let rec incs (_, e as node) =
+    (match e with
+     | Unop (("pre++" | "pre--" | "post++" | "post--"), (_, Id x)) ->
+         incremented := StrSet.add x !incremented
+     | _ -> ()) ;
+    List.iter incs (children node)
+  in
+  incs body ;
+  StrSet.fold (fun s acc ->
+    if StrSet.mem s nn then StrMap.add s true acc
+    else if StrSet.mem s !incremented || self_dependent s then StrMap.add s false acc
+    else acc) cells StrMap.empty
+
 let tmp_counter = ref 0
 let fresh_tmp env =
   incr tmp_counter ;
@@ -692,7 +826,15 @@ and aux_assign env pos lhs e2 =
          [malloc]'s [c_ptr] is narrowed to [T*]. *)
       let v = var env s in
       let e2 = aux_e env e2 in
+      let na_cell =
+        match MVariable.kind v with
+        | MVariable.AnnotMut g -> not (Ty.leq (GTy.ub g) Rstt.Cint.any)
+        | _ -> false
+      in
       (match Ast.VarMap.find_opt v env.ctypes, e2 with
+       | Some (Ast.Int as ty), _ when na_cell ->
+           (* An annotated [c_int_na] cell: C converts the value to [int]. *)
+           Ast.VarAssign (v, fresh_e env (Ast.Cast (ty, e2)))
        | _, (_, _, _, Ast.Const _) -> Ast.VarAssign (v, e2) (* already exact *)
        | Some (Ast.Ptr t as ty), _ when t <> Ast.Void ->
            Ast.VarAssign (v, fresh_e env (Ast.CoerceNarrow (ty, e2)))
@@ -911,6 +1053,7 @@ and translate_def ?self env key ret_ty name params body =
       | None -> env
       | Some v -> { env with id = NameMap.singleton (Name.Ident name) v :: env.id }
     in
+    let env = { env with cells = annotated_cells params body } in
     (* Bind every parameter into the topmost scope frame. The body is emitted
        by the parser as a [Block] for actual definitions and as [Seq []] for
        forward declarations; treat [Block] specially so the function body's
@@ -984,23 +1127,6 @@ let map f e =
     in
     f (pos, e)
   in aux e
-
-(** The immediate subexpressions of an expression, in source order. *)
-let children (_, e) =
-  match e with
-  | Const _ | Id _ | Break | Next | Goto _ | Return None -> []
-  | Unop (_, e1) | VarDeclare (_, e1) | FieldAccess (e1, _) | Default e1
-  | Cast (_, e1) | CoerceNarrow (_, e1) | Return (Some e1) -> [e1]
-  | Binop (_, (e1, e2)) | VarAssign (e1, e2) | Case (e1, e2) | Comma (e1, e2)
-  | While (e1, e2) -> [e1; e2]
-  | Call (f, args) -> f :: args
-  | MacroCall (_, args) -> args
-  | If (cond, then_, else_) -> cond :: then_ :: Option.to_list else_
-  | Ite (cond, then_, else_) -> [cond; then_; else_]
-  | For (init, cond, incr, body) ->
-      (init :: Option.to_list cond) @ Option.to_list incr @ [body]
-  | Switch (e1, cases) -> e1 :: cases
-  | Seq es | Block es -> es
 
 (** Extract function call names from an expression.
     [fun_names] is the set of known function names; bare Id references
