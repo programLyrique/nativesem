@@ -44,3 +44,7 @@ text_len: ([*struct str] -> c_int_na) & ([c_null] -> empty)
 
 num_d: ([*union num] -> c_double) & ([c_null] -> empty)
 
+init_int_poly_vec: ([*struct poly_vec({ shelter : any_sexp ; vec : INT })] -> ()) & ([c_null] -> empty)
+
+reset_vec: ([*struct poly_vec, any_sexp] -> ()) & ([c_null, any_sexp] -> empty)
+

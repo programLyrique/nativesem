@@ -43,6 +43,13 @@ let function_macros : StrSet.t ref = ref StrSet.empty
 
 let is_function_macro name = StrSet.mem name !function_macros
 
+(* The file-scope variables declared so far. A macro body may assign them: they
+   are visible where the macro is defined, unlike the caller's locals (see
+   [behaves_like_function]). *)
+let globals : StrSet.t ref = ref StrSet.empty
+
+let remember_global name = globals := StrSet.add name !globals
+
 let remember_seen_define_name name =
   seen_define_names := StrSet.add name !seen_define_names
 
@@ -247,7 +254,8 @@ let is_c_identifier s =
 (* Whether a parsed macro body behaves like a function body: control never
    leaves it other than by completing ([return], [goto], or a [break] /
    [continue] not enclosed by a loop or [switch] of the body itself), and it
-   only assigns its parameters and its own locals. Otherwise its meaning
+   only assigns its parameters, its own locals and the globals declared before
+   it (e.g. rlang's [r_preserve] assigns [_r_placeholder]). Otherwise its meaning
    depends on the expansion site (the caller's labels, loops and locals):
    e.g. utf8's [#define TRY(x) do { if ((err = (x))) goto exit; } while (0)].
    Labels are not represented after parsing, so every [goto] leaves the body. *)
@@ -280,7 +288,10 @@ let behaves_like_function params body =
     List.fold_left fold acc (A.children e)
   in
   let written, declared = fold ([], []) body in
-  let own = StrSet.union (A.bv_params params) (StrSet.of_list declared) in
+  let own =
+    StrSet.union (A.bv_params params) (StrSet.of_list declared)
+    |> StrSet.union !globals
+  in
   (not (escapes ~in_loop:false ~in_switch:false body))
   && List.for_all (fun s -> StrSet.mem s own) written
 
@@ -687,6 +698,7 @@ let with_test_state f =
   let saved_define_constants = !define_constants in
   let saved_const_eval = !(Const_eval.constants) in
   let saved_seen_defines = !seen_define_names in
+  let saved_globals = !globals in
   Fun.protect
     ~finally:(fun () ->
       warn_unsupported := saved_warn;
@@ -695,6 +707,7 @@ let with_test_state f =
       define_constants := saved_define_constants;
       Const_eval.constants := saved_const_eval;
       seen_define_names := saved_seen_defines;
+      globals := saved_globals;
       reset_processed_headers ();
       A.reset_define_aliases ())
     (fun () ->
@@ -704,6 +717,7 @@ let with_test_state f =
       reset_define_constants ();
       Const_eval.reset ();
       reset_seen_define_names ();
+      globals := StrSet.empty;
       f ())
 
 

@@ -155,33 +155,26 @@ let rec typeof_const c =
 
 module StrMap = Map.Make(String)
 
-(* Structs and unions are typed nominally: [struct NAME] is an atom of its own
-   (an Sstt tag), disjoint from every other type, and the types of its fields
-   are read from a table indexed by the struct name. Field reads and writes are typed
-   through that table ([field_read_scheme], [field_write_scheme]): a struct
-   value carries no record of its fields, so no type variable ever ends up
-   inside one. (Typed structurally, as records, every access through a pointer
-   parameter added a conjunct of record types to the parameter's type variable
-   and emptiness checks became exponential in the number of accesses.) *)
+(* Structs and unions are typed nominally: [struct NAME] is an Sstt tag of its
+   own, disjoint from every other type, and the types of its fields are read
+   from a table indexed by the struct name ([field_read_scheme],
+   [field_write_scheme]). (Typed structurally, as records, every access through
+   a pointer parameter added a conjunct of record types to the parameter's type
+   variable and emptiness checks became exponential in the number of accesses.)
+
+   The exception is the SEXP fields: the tag's content is the record of the
+   struct's SEXP fields, [struct S({ vec : any_sexp })], so that inference can
+   refine them as it refines SEXP parameters (a function reading [p->vec] as an
+   integer vector requires [vec : INT]). The other fields stay out of it. *)
 module Structs = struct
   (* Both tables are indexed by [struct NAME] or [union NAME]: C keeps the
      two kinds of tags in separate namespaces. *)
+  let tags : (string, Sstt.Tag.t) Hashtbl.t = Hashtbl.create 32
   let atoms : (string, Ty.t) Hashtbl.t = Hashtbl.create 32
 
   (* The distinct field lists seen for each struct name: two translation
      units may define different structs of the same name. *)
   let layouts : (string, (ctype * string) list list) Hashtbl.t = Hashtbl.create 32
-
-  let atom name =
-    match Hashtbl.find_opt atoms name with
-    | Some ty -> ty
-    | None ->
-        let tag = Sstt.Tag.mk name in
-        let ty = (tag, Sstt.Ty.any) |> Sstt.Descr.mk_tag |> Sstt.Ty.mk_descr in
-        PrinterCfg.add_printer_param
-          Sstt.Printer.{ aliases = [ (ty, name) ] ; extensions = [] } ;
-        Hashtbl.add atoms name ty ;
-        ty
 
   (* A forward declaration ([struct NAME;] or a use before the definition)
      has no fields and records nothing. *)
@@ -190,6 +183,42 @@ module Structs = struct
       let known = Hashtbl.find_opt layouts name |> Option.value ~default:[] in
       if not (List.mem fields known) then
         Hashtbl.replace layouts name (fields :: known)
+
+  (* The SEXP fields of the struct, in any of its layouts. *)
+  let sexp_fields name =
+    Hashtbl.find_opt layouts name |> Option.value ~default:[]
+    |> List.concat_map (List.filter_map (function
+        | (SEXP, f) -> Some f
+        | _ -> None))
+    |> List.sort_uniq String.compare
+
+  (* [struct NAME(content)]. *)
+  let mk name content =
+    let tag = match Hashtbl.find_opt tags name with
+      | Some tag -> tag
+      | None -> let tag = Sstt.Tag.mk name in Hashtbl.add tags name tag ; tag
+    in
+    (tag, content) |> Sstt.Descr.mk_tag |> Sstt.Ty.mk_descr
+
+  (* Every value of the struct, whatever is known of its SEXP fields. *)
+  let any name = mk name Sstt.Ty.any
+
+  (* The struct as declared: its SEXP fields are [any_sexp]. Fixed at the first
+     use, by which time its fields have been registered ([typeof_ctype]). *)
+  let atom name =
+    match Hashtbl.find_opt atoms name with
+    | Some ty -> ty
+    | None ->
+        let content =
+          sexp_fields name
+          |> List.map (fun f -> (f, (Defs.any_sexp, false)))
+          |> Record.mk_closed
+        in
+        let ty = mk name content in
+        PrinterCfg.add_printer_param
+          Sstt.Printer.{ aliases = [ (ty, name) ] ; extensions = [] } ;
+        Hashtbl.add atoms name ty ;
+        ty
 
   (* The structs with a field [label], with the C types of that field. *)
   let with_field label =
@@ -248,29 +277,41 @@ let typeof_ctype ct =
 
 
 (* [e.label]: [struct S -> T] for each struct [S] with a field [label] of C type
-   [T], and, for the records of the [.ty] files (e.g. [Rcomplex]), the
-   projection ['a. { label : 'a .. } -> 'a]. The struct atoms are disjoint, so
-   applying the intersection never splits on a type variable of the argument. *)
+   [T] ([struct S({ label : 'a .. }) -> 'a] for a SEXP field), and, for the
+   records of the [.ty] files (e.g. [Rcomplex]), the projection
+   ['a. { label : 'a .. } -> 'a]. The struct tags are disjoint, so applying the
+   intersection never splits on a type variable of the argument. *)
 let field_read_scheme label =
-  let a = TVar.mk KNoInfer None |> TVar.typ in
+  let tv () = TVar.mk KNoInfer None |> TVar.typ in
+  let a = tv () in
   let structs =
     Structs.with_field label |> List.map (fun (name, ctys) ->
-      Arrow.mk (Structs.atom name) (List.map typeof_ctype ctys |> Ty.disj))
+      if List.mem label (Structs.sexp_fields name) then
+        let a = tv () in
+        Arrow.mk (Structs.mk name (Record.mk_open [ label, (a, false) ])) a
+      else
+        Arrow.mk (Structs.any name) (List.map typeof_ctype ctys |> Ty.disj))
   in
   Arrow.mk (Record.mk_open [ label, (a, false) ]) a :: structs
   |> Ty.conj |> GTy.mk |> TyScheme.mk_poly
 
 (* [e.label = v], as a function of [(e, v)] returning the updated value: the
-   type of a struct does not depend on the values of its fields, so the result
-   is [e]'s type. The value is not checked against the field's declared type:
-   C's implicit conversions would have to be modeled, and reads give the
-   declared type anyway. *)
+   struct keeps what is known of its SEXP fields, except when [label] is one of
+   them, which is reset to its declared type (the written value is not
+   tracked). The value is not checked against the field's declared type: C's
+   implicit conversions would have to be modeled, and reads give the declared
+   type anyway. *)
 let field_write_scheme label =
-  let r = TVar.mk KNoInfer None |> TVar.typ in
+  let tv () = TVar.mk KNoInfer None |> TVar.typ in
+  let r = tv () in
   let structs =
     Structs.with_field label |> List.map (fun (name, _) ->
-      let s = Structs.atom name in
-      Arrow.mk (Tuple.mk [ s ; Ty.any ]) s)
+      let sexp_fields = Structs.sexp_fields name in
+      if List.mem label sexp_fields then
+        Arrow.mk (Tuple.mk [ Structs.any name ; Ty.any ]) (Structs.atom name)
+      else
+        let s = if sexp_fields = [] then Structs.atom name else Structs.mk name (tv ()) in
+        Arrow.mk (Tuple.mk [ s ; Ty.any ]) s)
   in
   Arrow.mk (Tuple.mk [ Ty.cap r (Record.mk_open []) ; Ty.any ]) r :: structs
   |> Ty.conj |> GTy.mk |> TyScheme.mk_poly

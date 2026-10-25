@@ -185,3 +185,10 @@ struct str { union { struct text text; double raw; } value; int type; };
 int text_len(struct str *s) { return s->value.text.len; }
 typedef union { int i; double d; } num;
 double num_d(num *n) { return n->d; }
+
+/* The SEXP fields of a struct stay refinable: its type carries their record,
+ * so reading [p->vec] as an integer vector requires [vec : INT] (vctrs'
+ * init_int_poly_vec). Writing a SEXP field resets it to [any_sexp]. */
+struct poly_vec { SEXP shelter; SEXP vec; const void* p_vec; int type; };
+void init_int_poly_vec(struct poly_vec* p) { p->p_vec = (const void*) INTEGER(p->vec); }
+void reset_vec(struct poly_vec* p, SEXP x) { p->vec = x; p->type = 1; }

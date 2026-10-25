@@ -1664,6 +1664,7 @@ and aux_top_level_item_non_preproc defines (item : top_level_item) =
       let try_global_of_decl (decl: anon_choice_opt_ms_call_modi_decl_decl_opt_gnu_asm_exp_2fa2f9e) =
         let emit level name =
           let ty = Ast.build_ptr level base_ty in
+          Preprocessor.remember_global name ;
           Some (Mlsem.Common.Position.dummy, A.GlobalVar (linkage, name, ty))
         in
         (* [ret_level] applies to the return type (number of outer
@@ -1673,6 +1674,7 @@ and aux_top_level_item_non_preproc defines (item : top_level_item) =
         let emit_function_pointer ret_level params variadic name =
           let ret_ty = Ast.build_ptr ret_level base_ty in
           let ty = Ast.FunPtr (ret_ty, params, variadic) in
+          Preprocessor.remember_global name ;
           Some (Mlsem.Common.Position.dummy, A.GlobalVar (linkage, name, ty))
         in
         match decl with

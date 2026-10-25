@@ -20,3 +20,7 @@ Creating fresh variable: TRY
 use_try:
 untypeable: unbound variable
 name: TRY
+PRESERVE: [any_sexp] -> c_void
+
+use_preserve: [any_sexp] -> ()
+

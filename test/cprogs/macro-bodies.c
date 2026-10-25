@@ -27,3 +27,9 @@ int use_twice(int x) { return TWICE(x); }
 #define FIRST_POS(p, n, out) do { int i; for (i = 0; i < n; i++) { if (p[i] > 0) break; } out = i; } while (0)
 
 int use_try(int x) { int err = 0; TRY(x); exit: return err; }
+
+/* A global declared before the macro is visible where it is defined: assigning
+ * it does not depend on the expansion site (rlang's r_preserve). */
+static SEXP placeholder = NULL;
+#define PRESERVE(X) (R_PreserveObject(placeholder = X), (void) NULL)
+void use_preserve(SEXP x) { PRESERVE(x); }
