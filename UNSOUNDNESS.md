@@ -12,11 +12,12 @@ listed, except when they interact with one of the entries below.
 
 ## Control flow
 
-- **`goto` is a no-op.** `PAst.Goto` is lowered to a null constant
-  (`PAst.aux_e`). The code after a `goto` is typed as if execution fell
-  through, and a backward `goto` (a loop) is not a loop: the values reaching
-  its label along the back edge are not considered. (A macro whose body
-  contains a `goto` is therefore not expanded, see below.)
+- **Backward `goto`s are no-ops.** A forward `goto` leaves the block built
+  for its label (`PAst.label_blocks`), but a `goto` to a label before it, or
+  into a block that does not contain it, is lowered to a null constant: the
+  code after it is typed as if execution fell through, and a loop made of a
+  backward `goto` is not a loop (the values reaching its label along the back
+  edge are not considered).
 - **`case` on an unknown constant matches every integer.** In a `switch`
   (`Ast.aux_e`, `Switch`), a case label that is neither a literal nor a known
   constant gets the pattern `c_int_na`. Patterns are tried in order, so the
@@ -83,7 +84,7 @@ object is not kept in sync.
 - **Function-like macros are typed as functions.** A macro whose body behaves
   like a function body (`Preprocessor.behaves_like_function`) is bound as one
   (the others are expanded at their calls, `Preprocessor.expand_macro`, which
-  is C's semantics, except those with a `goto`, left unbound):
+  is C's semantics):
   its arguments are evaluated once, before the body, and the names in its
   body are resolved where the macro is defined. At an expansion they are
   evaluated as many times as they occur, possibly not at all, and the body's

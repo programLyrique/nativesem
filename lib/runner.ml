@@ -638,7 +638,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         match past with
         | _, PAst.Fundef (_, name, _, _) when recursive && opts.lambda_rec <> None ->
           let self = MVariable.create MVariable.Immut (Some name) in
-          (match PAst.transform ~self {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty} past with
+          (match PAst.transform ~self {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty; labels = PAst.StrSet.empty} past with
            | _, _, _, Ast.Noop -> None
            | (_, decl', _, _) as e ->
              let key = binding_name past in
@@ -661,7 +661,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
               (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
         | _ -> (idenv, env, decl)
       in
-      let e = PAst.transform {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty} past in
+      let e = PAst.transform {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty; labels = PAst.StrSet.empty} past in
       if opts.ast && visible then
         Printf.printf "%s\n" (Ast.show_e e);
       (* Provide a declared-C-signature fallback for Fundefs when [opts] asks

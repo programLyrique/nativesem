@@ -359,20 +359,12 @@ let parse_preproc_function_def helpers (func_def : preproc_function_def) =
             if behaves_like_function params inner then Some body
             else begin
               (* A statement body expands in place: textual expansion opens no
-                 scope. A body with a [goto] stays unbound: [goto] is not
-                 modeled, so its expansion would follow the paths after the
-                 jump as if it had not happened (utf8's [TRY]). *)
+                 scope. *)
               let inner = match inner with
                 | pos, A.Block stmts -> (pos, A.Seq stmts)
                 | e -> e
               in
-              let rec has_goto (_, e as node) =
-                match e with
-                | A.Goto _ -> true
-                | _ -> List.exists has_goto (A.children node)
-              in
-              if not (has_goto inner) then
-                Hashtbl.replace expansions name (params, inner) ;
+              Hashtbl.replace expansions name (params, inner) ;
               None
             end
           in

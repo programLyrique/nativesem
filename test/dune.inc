@@ -507,3 +507,14 @@
  (deps    cprogs/flow.c cprogs/flow.expected)
  (action  (diff cprogs/flow.expected flow.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/goto.c)
+ (action  (with-stdout-to goto.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/goto.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/goto.c cprogs/goto.expected)
+ (action  (diff cprogs/goto.expected goto.output)))
+

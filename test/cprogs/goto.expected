@@ -1,0 +1,14 @@
+f: [c_int_na] --> c_int_na
+
+plain: ([c(..-1)] -> c_bool) & ([c_int_na \ c(..-1)] -> c_int_na)
+
+from_loop: [c_int_na] -> c_int
+
+two: ([c(2)] -> c_false | c(2)) & ([c_int_na \ c(1..2)] -> c_false | c(3)) & ([c_true] -> c_bool)
+
+backward: [c_int_na] -> c_int
+
+cleanup: ([c(..-1)] -> null) & ([c(0..)] -> INT) & ([c_true] -> INT1)
+
+use_try: [c_int_na] -> c_int_na
+

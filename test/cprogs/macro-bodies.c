@@ -18,8 +18,7 @@ int use_twice(int x) { return TWICE(x); }
 
 /* Bodies whose meaning depends on the expansion site (the caller's labels,
    loops and locals) are not functions: a call is replaced by the body, the
-   arguments substituted for the parameters, as C does. TRY is not: goto is
-   not modeled, so it stays unbound. */
+   arguments substituted for the parameters, as C does. */
 #define TRY(x) do { if ((err = (x))) { goto exit; } } while (0)
 #define CHECK(x) if (!(x)) return -1
 #define STOP_IF(x) if (x) break

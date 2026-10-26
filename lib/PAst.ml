@@ -74,7 +74,13 @@ type const =
   | Break
   | Next
   | Goto of string
-    (** [goto label]. Not modeled by the typer yet: lowered to a no-op. *)
+    (** [goto label]: an exit of the [LabelBlock] of [label], when it is in
+        one ([label_blocks]); otherwise a no-op. *)
+  | Labeled of string * e
+    (** [label: stmt]. *)
+  | LabelBlock of string * e
+    (** The statements before [label:] that a [goto label] may leave, built
+        by [label_blocks]; lowered to an MLsem named block. *)
   | Seq of e list
   | Block of e list
     (** C compound statement [{ ... }]. Introduces a new lexical scope:
@@ -132,6 +138,7 @@ let bv_params params =
 let children (_, e) =
   match e with
   | Const _ | Id _ | Break | Next | Goto _ | Return None -> []
+  | Labeled (_, e1) | LabelBlock (_, e1) -> [e1]
   | Unop (_, e1) | VarDeclare (_, e1) | FieldAccess (e1, _) | Default e1
   | Cast (_, e1) | CoerceNarrow (_, e1) | Return (Some e1) -> [e1]
   | Binop (_, (e1, e2)) | VarAssign (e1, e2) | Case (e1, e2) | Comma (e1, e2)
@@ -149,6 +156,7 @@ let children (_, e) =
 let rec bv_e in_lhs_assign (_,e) = 
   match e with 
   | Break | Next | Goto _ | Const _ -> StrSet.empty
+  | Labeled (_, e) | LabelBlock (_, e) -> bv_e in_lhs_assign e
   | Id s when in_lhs_assign -> StrSet.singleton s
   | Id _ -> StrSet.empty
   | Unop (("pre++" | "pre--" | "post++" | "post--"), e) -> bv_e true e
@@ -246,6 +254,8 @@ type env = {
   decl: Ast.ctype Ast.DeclMap.t;
   ctypes: Ast.ctype Ast.VarMap.t;
     (** The declared (resolved) C types of the parameters and locals. *)
+  labels: StrSet.t;
+    (** The labels of the enclosing [LabelBlock]s. *)
   cells: bool StrMap.t;
     (** The integer variables of the function being lowered that get an
         annotated cell, with whether it is [c_int] (see [annotated_cells]). *)
@@ -603,6 +613,55 @@ let annotated_cells params body =
     else if StrSet.mem s !incremented || self_dependent s then StrMap.add s false acc
     else acc) cells StrMap.empty
 
+(* Forward [goto]s. In a statement list [s1 ... sk; L: s; rest] where some
+   [goto L] occurs in [s1 ... sk] (at any depth, in a loop say), [s1 ... sk]
+   become a [LabelBlock L], which a [goto L] leaves, and execution goes on at
+   [s]: the blocks of MLsem, whose exits may cross loops. The declarations of
+   [s1 ... sk] are hoisted before the block (their initializers stay in
+   place), since they are in scope after the label. The rightmost such label
+   is treated first and the block's contents are treated recursively, so a
+   [goto] to a later label leaves the nested blocks too. A backward [goto],
+   or one into a block it is not in, stays a no-op. *)
+let rec label_blocks stmts =
+  let rec gotos (_, e as node) =
+    match e with
+    | Goto l -> StrSet.singleton l
+    | _ -> List.fold_left (fun acc c -> StrSet.union acc (gotos c)) StrSet.empty (children node)
+  in
+  let arr = Array.of_list stmts in
+  let n = Array.length arr in
+  let rec find k =
+    if k < 0 then None
+    else match arr.(k) with
+      | _, Labeled (l, _) ->
+          let before = Array.to_list (Array.sub arr 0 k) in
+          if List.exists (fun st -> StrSet.mem l (gotos st)) before then Some (k, l)
+          else find (k - 1)
+      | _ -> find (k - 1)
+  in
+  match find (n - 1) with
+  | None -> stmts
+  | Some (k, l) ->
+      let prefix = Array.to_list (Array.sub arr 0 k) in
+      let rest = Array.to_list (Array.sub arr k (n - k)) in
+      (* The declarations of a statement of the list, through the [Seq]s the
+         parser builds for a declaration ([int a = 1, b;]), not into blocks. *)
+      let rec hoist st =
+        match st with
+        | _, VarDeclare _ -> ([ st ], None)
+        | pos, Seq inner ->
+            let parts = List.map hoist inner in
+            (List.concat_map fst parts, Some (pos, Seq (List.filter_map snd parts)))
+        | _ -> ([], Some st)
+      in
+      let decls, prefix =
+        List.fold_right (fun st (decls, kept) ->
+          let d, st = hoist st in
+          (d @ decls, Option.to_list st @ kept)) prefix ([], [])
+      in
+      let pos = match prefix with (p, _) :: _ -> p | [] -> fst arr.(k) in
+      decls @ [ (pos, LabelBlock (l, (pos, Seq (label_blocks prefix)))) ] @ rest
+
 let tmp_counter = ref 0
 let fresh_tmp env =
   incr tmp_counter ;
@@ -700,7 +759,11 @@ let rec aux_e env (pos,e) =
   | Return (Some e) -> Ast.Return (Some (aux_e env e))
   | Break -> Ast.Break
   | Next -> Ast.Next
+  | Goto l when StrSet.mem l env.labels -> Ast.GotoLabel l
   | Goto _ -> Ast.Const (aux_const CNull)
+  | Labeled (_, stmt) -> (let (_, _, _, e) = aux_e env stmt in e)
+  | LabelBlock (l, body) ->
+      Ast.LabelBlock (l, aux_e { env with labels = StrSet.add l env.labels } body)
   | Switch  (e, cases) -> 
       (*Detects break and return; remove break.
         Recurses into nested Seq nodes so that a break inside a compound
@@ -931,7 +994,7 @@ and aux_block env stmts =
              let rest_e = loop env rest in
              fresh_e env (Ast.Seq (stmt_e, rest_e)))
   in
-  loop env stmts
+  loop env (label_blocks stmts)
 and aux_block_stmt env stmt =
   (* Tail position: a single declaration as the last block statement has no
      subsequent uses, so we just emit its initializer (if any) and return. *)
@@ -1101,6 +1164,8 @@ and translate_def ?self env key ret_ty name params body =
 let map_children f (pos, e) =
   let e = match e with
     | Const _ | Id _ | Break | Next | Goto _ -> e
+    | Labeled (l, e1) -> Labeled (l, f e1)
+    | LabelBlock (l, e1) -> LabelBlock (l, f e1)
     | Unop (op, e1) -> Unop (op, f e1)
     | Binop (op, (e1, e2)) -> Binop (op, (f e1, f e2))
     | VarDeclare (ty, e1) -> VarDeclare (ty, f e1)
@@ -1161,6 +1226,7 @@ let rec extract_calls_from_expr ?(fun_names=StrSet.empty) (_pos, e') =
      function references ([&fn] reaches the [Id] via the [Unop] case below). *)
   | Id name when StrSet.mem name fun_names -> [name]
   | Const _ | Id _ | Break | Next | Goto _ -> []
+  | Labeled (_, e) | LabelBlock (_, e) -> extract e
   | Unop (_, e) -> extract e
   | Binop (_, (e1, e2)) -> extract e1 @ extract e2
   | FieldAccess (e, _) -> extract e

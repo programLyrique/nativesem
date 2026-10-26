@@ -118,6 +118,9 @@ type e' =
 | TyCheck of e * Ty.t (* Test between an expression and a constant *)
 | Cast of ctype * e (* Type cast expression *)
 | CoerceNarrow of ctype * e
+| LabelBlock of string * e
+  (* The statements a [goto label] may leave ([PAst.label_blocks]). *)
+| GotoLabel of string
   (* Implicit narrowing conversion (C's [void* -> T*] at a typed pointer
      initialization). Lowers to [TypeCast] (intersecting cast: result is
      [target & source]) rather than [Cast]'s [TypeCoerce] (replacement), so it
@@ -412,6 +415,14 @@ let strsxp_of_arg (arg : e) =
 (* Transformation to MLsem ast
   GTy is used for gradual types, Ty for "normal" types
 *)
+(* The MLsem block of a label. Labels are unique in a function, and a block
+   never contains another function, so one id per label name is enough. *)
+let label_ids : (string, int) Hashtbl.t = Hashtbl.create 16
+let label_id l =
+  match Hashtbl.find_opt label_ids l with
+  | Some i -> i
+  | None -> let i = Hashtbl.length label_ids in Hashtbl.add label_ids l i ; i
+
 let rec aux_e (eid, _decl, vars, e) =
   let int_const_of_expr expr =
     match expr with
@@ -631,6 +642,17 @@ let rec aux_e (eid, _decl, vars, e) =
         A.Ite (e, GTy.mk ty, tt, ff)
     | Cast (ty, e) -> let e = aux_e e in
         A.TypeCoerce (e, typeof_ctype ty |> GTy.mk , SA.NoCheck)
+    | LabelBlock (l, e) ->
+        (* A [goto] makes the path it is on end in the block ([Ret] gives it
+           type [empty]); execution goes on after the block whichever way it
+           is left, hence the [Voidify], as for a loop. *)
+        A.Voidify (Eid.unique (), A.Block (A.BOther (label_id l), aux_e e))
+    | GotoLabel l ->
+        (* With a value: from inside a loop, MLsem records the exit in a
+           variable the block reads at its end ([elim_ret_args]), so that the
+           code after the label is reached; a [Ret] without a value would just
+           end the path. *)
+        A.Ret (A.BOther (label_id l), Some (Eid.unique (), A.Value (GTy.mk Rstt.Cenums.void)))
     | CoerceNarrow (ty, e) -> let e = aux_e e in
         (* Intersecting cast: result is [typeof(ty) & source], so an
            already-precise initializer is preserved and only a too-wide one is
@@ -747,6 +769,8 @@ let rec aux_e (eid, _decl, vars, e) =
       | TyCheck (e, ty) -> TyCheck (aux e, ty)
       | Cast (ty, e) -> Cast (ty, aux e)
       | CoerceNarrow (ty, e) -> CoerceNarrow (ty, aux e)
+      | LabelBlock (l, e) -> LabelBlock (l, aux e)
+      | GotoLabel l -> GotoLabel l
       | Function (name, ret_type, params, body, self) ->
           Function (name, ret_type, params, aux body, self)
       | Switch (e, cases) ->
@@ -991,6 +1015,15 @@ let rec aux_e (eid, _decl, vars, e) =
       | CoerceNarrow (ty, e1) ->
           let e1', env1, _ = aux e1 env in
           ((id, decl, env, CoerceNarrow (ty, e1')), env1, None)
+
+      | LabelBlock (l, body) ->
+          (* The label is reached from any [goto] in the block, with the
+             values of that point. *)
+          let env0 = forget (assigned body) env in
+          let body', _, _ = aux body env0 in
+          ((id, decl, env, LabelBlock (l, body')), env0, None)
+
+      | GotoLabel _ -> ((id, decl, env, expr), env, None)
 
       | Function (name, ret_type, params, body, self) ->
           (* Do not propagate outer constants into function bodies. *)

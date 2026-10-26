@@ -1218,10 +1218,10 @@ and aux_switch_statement (switch_stmt: switch_statement) =
   | _ -> failwith "Unexpected body in switch statement"
 
 and aux_labeled_statement (((loc_label, label), (loc_colon, _), body) as labeled_stmt : labeled_statement) =
-  (* [label: stmt] is [stmt]: labels are not modeled ([goto] is a no-op), but
-     the statement must not be lost ([exit: return err;]). *)
+  (* [label: stmt]: [stmt], the target of the [goto label]s
+     ([PAst.label_blocks]). *)
   match body with
-  | `Stmt stmt -> aux_statement stmt
+  | `Stmt stmt -> (locs_to_pos loc_label loc_colon, A.Labeled (label, aux_statement stmt))
   | `Decl _ ->
       if !warn_unsupported then begin
         Printf.eprintf
@@ -2025,11 +2025,11 @@ let%test "void function does not duplicate explicit return" =
   | [(_, A.Fundef (Ast.Void, "f", [], (_, A.Return None)))] -> true
   | _ -> false
 
-let%test "a labeled statement is its statement" =
+let%test "a labeled statement keeps its statement" =
   let res = parse_string "int f() { exit: return 0; }" in
   match to_ast res with
   | [(_, A.Fundef (Ast.Int, "f", [],
-      (_, A.Return (Some (_, A.Const (A.CInt 0))))))]
+      (_, A.Labeled ("exit", (_, A.Return (Some (_, A.Const (A.CInt 0))))))))]
   | [(_, A.Fundef (Ast.Int, "f", [],
-      (_, A.Block [(_, A.Return (Some (_, A.Const (A.CInt 0))))])))] -> true
+      (_, A.Block [(_, A.Labeled ("exit", (_, A.Return (Some (_, A.Const (A.CInt 0))))))])))] -> true
   | _ -> false
