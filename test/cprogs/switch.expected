@@ -4,7 +4,7 @@ isInteger3: ([INT] -> c_true) & ([((CHR | CLX | DBL | LGL | RAW) | (~vec)<...>) 
 
 checkList: ([list] -> c_true) & ([(~list)<...> | null | p(CHR) | sym] -> c_false)
 
-isVectorList: ∀'a. ([list] --> c_true) & ([(env | externalptr | lang | vec & v('a) | arrow) | null | p(CHR) | sym] --> c_false)
+isVectorList: ∀'a. ([list] --> c_true) & ([(env | externalptr | lang | v('a) | arrow) | null | p(CHR) | sym] --> c_false)
 
 length2: ([null<...>] -> c_false) & ([vec1] -> c_true) & ([vec] | [lang | null] | [list | p(CHR)] -> c_int)
 
