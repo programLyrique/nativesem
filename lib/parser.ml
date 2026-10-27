@@ -1141,7 +1141,9 @@ and aux_return_statement (ret: return_statement)  =
 and aux_expression_statement (expr_stmt: expression_statement) =
   match expr_stmt with 
   | (Some comma_expr, _) -> aux_comma_expression comma_expr
-  | (None, (loc,_)) -> (loc_to_pos loc, A.Return None)
+  (* The empty statement [;], e.g. the missing init of [for (; i < n; i++)]:
+     it does nothing, it does not return. *)
+  | (None, (loc,_)) -> (loc_to_pos loc, A.Seq [])
 
 and aux_for_cond (stmts: for_statement_body) =
   let decl,cond,_,incr = stmts in
