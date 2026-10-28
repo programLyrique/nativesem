@@ -1,0 +1,8 @@
+first_na_or_all: ∀'a,'b,'c. ([(CHR & v('b) & v('c)) & 'a] -> null | 'a & (CHR & v('b) & v('c) | null)) & ([(CHR1 & v1('b) & v1('c)) & 'a] -> null | 'a & (CHR1 & v1('b) & v1('c) | null)) & (['a & ((clx & v('b) | (~vec)<...>) | null | sym)] -> empty)
+
+count_down: ∀'a. ([vec1 & 'a] -> vec1 & 'a) & (['a & ((list | vec) | p(CHR))] -> 'a & ((list | vec) | p(CHR)))
+
+forever: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
+
+stray: ∀'a. ([null & 'a] -> null & 'a) & (['a & (p(CHR) | sym | attr_any)] -> 'a & (p(CHR) | sym | attr_any))
+

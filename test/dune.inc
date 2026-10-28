@@ -518,3 +518,14 @@
  (deps    cprogs/goto.c cprogs/goto.expected)
  (action  (diff cprogs/goto.expected goto.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/empty-statement.c)
+ (action  (with-stdout-to empty-statement.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/empty-statement.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/empty-statement.c cprogs/empty-statement.expected)
+ (action  (diff cprogs/empty-statement.expected empty-statement.output)))
+
