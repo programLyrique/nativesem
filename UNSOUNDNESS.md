@@ -48,7 +48,8 @@ object is not kept in sync.
   precondition at entry, not an invariant. Writing the field through the same
   variable resets it to `any_sexp`.
 - **In-place mutation of R objects updates one variable.** `setAttrib`,
-  `SET_VECTOR_ELT` and `SET_STRING_ELT` are modeled as `v = f(v, ...)` when
+  `SET_VECTOR_ELT`, `SET_STRING_ELT` and `R_SetExternalPtrTag` (the tag is
+  part of an external pointer's type) are modeled as `v = f(v, ...)` when
   their first argument is a variable (`PAst.process_call`): other variables,
   struct fields or list elements holding the same object keep their old type,
   and so does the object when the first argument is not a variable

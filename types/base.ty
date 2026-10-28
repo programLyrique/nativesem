@@ -182,7 +182,10 @@ R_GetBindingType: [sym, env] --> c_int
 // R API: external pointers (extended)
 R_ClearExternalPtr: [externalptr] --> c_void
 R_SetExternalPtrAddr: [externalptr, *any] --> c_void
-R_ExternalPtrTag: [externalptr] --> any_sexp
+// The tag of an external pointer is part of its type: externalptr(TARGET, TAG).
+R_ExternalPtrTag: [externalptr(any, 'b)] --> any_sexp & 'b
+// Changes the tag in place: PAst rebinds the pointer variable to the result.
+R_SetExternalPtrTag: [externalptr('a), any_sexp & 'b] --> externalptr('a, 'b)
 R_ExternalPtrProtected: [externalptr] --> any_sexp
 R_RegisterCFinalizerEx: [externalptr, any_sexp --> [] | c_void, c_bool] --> c_void
 
@@ -436,7 +439,7 @@ isFrame: ([<data.frame, ...>] --> c_true) & ([any_sexp \ <data.frame, ...>] --> 
 
 // External pointers 
 R_ExternalPtrAddr: ([externalptr('a)] --> *'a) & ([externalptr(empty)] --> c_null)
-R_MakeExternalPtr: ([*'a, any_sexp, any_sexp] --> externalptr('a)) & ([c_null, any_sexp, any_sexp] --> externalptr(empty))
+R_MakeExternalPtr: ([*'a, any_sexp & 'b, any_sexp] --> externalptr('a, 'b)) & ([c_null, any_sexp & 'b, any_sexp] --> externalptr(empty, 'b))
 
 // C functions
 

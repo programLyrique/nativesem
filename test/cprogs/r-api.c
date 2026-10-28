@@ -18,7 +18,11 @@ SEXP build_extptr(SEXP addr, SEXP tag, SEXP prot) {
 }
 // TYPEOF accepts a value typed any_sexp (here the result of an R API call),
 // while still narrowing a variable it is applied to.
-int typeof_of_any_sexp(SEXP p) { return TYPEOF(R_ExternalPtrTag(p)); }
+int typeof_of_any_sexp(SEXP p) { return TYPEOF(R_ExternalPtrProtected(p)); }
+// The tag of an external pointer is part of its type.
+SEXP tag_of(SEXP p) { return R_ExternalPtrTag(p); }
+SEXP first_of_tag(SEXP p) { return VECTOR_ELT(R_ExternalPtrTag(p), 0); }
+SEXP retag(SEXP p, SEXP t) { R_SetExternalPtrTag(p, t); return R_ExternalPtrTag(p); }
 int typeof_of_car(SEXP l) { if (TYPEOF(l) != LANGSXP) return 0; return TYPEOF(CAR(l)); }
 
 // Rf_xlength / XLENGTH / LENGTH accept lists: the list branch is kept.

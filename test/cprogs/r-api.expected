@@ -2,9 +2,15 @@ check_interrupt_fn: [*c_void] -> ()
 
 pending_interrupt: () -> c_bool
 
-build_extptr: ([INT, any_sexp, any_sexp] -> externalptr(c_int_na)) & ([^INT1, any_sexp, any_sexp] -> externalptr(c_int))
+build_extptr: ∀'a. ([INT, any_sexp & 'a, any_sexp] -> externalptr(c_int_na, 'a)) & ([^INT1, any_sexp & 'a, any_sexp] -> externalptr(c_int, 'a))
 
 typeof_of_any_sexp: [externalptr] -> (~vec)<...> | null | prim | sym
+
+tag_of: ∀'a. [externalptr(any, 'a)] -> 'a
+
+first_of_tag: ∀'a. [externalptr(any, { 'a })] -> 'a
+
+retag: ∀'a. [externalptr, any_sexp & 'a] -> any_sexp & 'a
 
 typeof_of_car: ([lang] -> (~vec)<...> | null | prim | sym) & ([(~lang)<...> | null | p(CHR) | sym] -> c_false)
 

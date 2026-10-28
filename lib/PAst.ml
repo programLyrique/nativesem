@@ -1029,7 +1029,9 @@ and process_call env f args =
        - setAttrib / Rf_setAttrib return the object (vec, the 1st arg) -> yield v
        - SET_VECTOR_ELT returns the element (3rd arg)                  -> yield it
        - SET_STRING_ELT returns void                                  -> yield unit
-         (a bare VarAssign yields unit, so no trailing read). *)
+         (a bare VarAssign yields unit, so no trailing read).
+       - R_SetExternalPtrTag returns void (the tag is part of the type of an
+         external pointer)                                           -> yield unit *)
   let set_call loc1 = mk_e env (Eid.unique_with_pos loc1)
       (Ast.Call (aux_e env f, List.map (aux_e env) args)) in
   let e = match (f, args) with
@@ -1039,6 +1041,9 @@ and process_call env f args =
   | (loc1,Id "SET_VECTOR_ELT"),((_, Id v)::_::elt::_) ->
    let vv = var env v in
    Ast.Seq (fresh_e env (Ast.VarAssign (vv, set_call loc1)), aux_e env elt)
+  | (loc1,Id "R_SetExternalPtrTag"),(_, Id v)::_ ->
+   (* The tag is part of the pointer's type. *)
+   Ast.VarAssign (var env v, set_call loc1)
   | (loc1,Id "SET_STRING_ELT"),(_, Id v)::_ ->
    Ast.VarAssign (var env v, set_call loc1)
   | (_, Id "sizeof"), [(arg_pos, Id name)]
