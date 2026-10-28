@@ -46,3 +46,11 @@ int mask_value()
 {
     return MASK_READ;
 }
+
+/* An enum whose values form many intervals is typed by their hull (curl's
+ * CURLoption); its enumerators keep their exact values. */
+typedef enum { A0 = 0, A1, A2, A3 } small_t;
+typedef enum { B0 = 0, B1 = 10, B2 = 20, B3 = 30, B4 = 40, B5 = 50, B6 = 60, B7 = 70, B8 = 80, B9 = 90 } sparse_t;
+int use_small(small_t s) { return s == A2; }
+int use_sparse(sparse_t s) { if (s == B3) return 1; return 0; }
+sparse_t give(void) { return B5; }

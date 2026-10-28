@@ -160,6 +160,18 @@ let find_existing_binding name idenv env =
 let has_existing_binding name idenv =
   Idenv.mem (id name) idenv || has_ty_binding name
 
+(* Binds a constant of a header ([#define], enumerator), whose variable
+   ([Defs.BuiltinVar.register_dynamic]) is shared by name: a header is read
+   once per file that includes it. The last definition wins, as for a
+   [#define] after an [#undef]; an enumerator coming back with another value
+   (an error in C within one file) is reported. *)
+let bind_constant ~enum name v ty env =
+  (match Env.find_opt v env with
+   | Some old when enum && not (GTy.equiv (snd (TyScheme.get old)) ty) ->
+       Format.eprintf "Warning: enumerator %s redefined with another value@." name
+   | _ -> ()) ;
+  Env.replace v (TyScheme.mk_mono ty) env
+
 let register_enum_constants ty : (Variable.t * Ty.t) list =
   let rec aux ty =
     match ty with
@@ -475,11 +487,16 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       if opts.debug && visible then
         print_visible ~debug:opts.debug `Define visible v ty;
       report name (Typed { header = `Define ; var = v ; tys = ty }) ;
-      (Idenv.add (id name) v idenv, Env.add v ty env, decl)
+      let env =
+        if skip_if_defined then bind_constant ~enum:false name v (snd (TyScheme.get ty)) env
+        else Env.add v ty env
+      in
+      (Idenv.add (id name) v idenv, env, decl)
   | _, PAst.TypeDecl (name, ty) ->
       let env =
         register_enum_constants ty
-        |> List.fold_left (fun env (v, ty) -> Env.add v (TyScheme.mk_mono (GTy.mk ty)) env) env
+        |> List.fold_left (fun env (v, ty) ->
+            bind_constant ~enum:true (Variable.get_name v |> Option.value ~default:"?") v (GTy.mk ty) env) env
       in
       (idenv, env, Ast.DeclMap.add name ty decl)
   | _, PAst.GlobalVar (linkage, name, ctype) ->

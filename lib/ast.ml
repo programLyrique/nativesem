@@ -195,11 +195,40 @@ module Structs = struct
         | _ -> None))
     |> List.sort_uniq String.compare
 
+  (* Printed [struct NAME], or [struct NAME(content)] when its SEXP fields are
+     known more precisely than declared. A printer extension, looked up by
+     tag: an alias per struct would have the printer compare every type it
+     prints with every struct (hundreds, with a library's headers). *)
+  let printer name =
+    let to_t (ctx : Sstt.Printer.build_ctx) comp =
+      let _, content = Sstt.Op.TagComp.as_atom comp in
+      let declared =
+        match Hashtbl.find_opt atoms name with
+        | Some atom ->
+            let _, c = Sstt.Op.TagComp.as_atom
+                (Sstt.Ty.get_descr atom |> Sstt.Descr.get_tags
+                 |> Sstt.Tags.get (Hashtbl.find tags name)) in
+            Sstt.Ty.equiv c content
+        | None -> false
+      in
+      Some (if declared || Sstt.Ty.is_any content then None else Some (ctx.build content))
+    in
+    let print _prec _assoc fmt = function
+      | None -> Format.pp_print_string fmt name
+      | Some d -> Format.fprintf fmt "%s(%a)" name (Rstt.Pp.print_tl_descr_ctx 0 Sstt.Prec.NoAssoc) d
+    in
+    Sstt.Printer.builder ~to_t ~map:(fun f _ c -> Option.map f c) ~print
+
   (* [struct NAME(content)]. *)
   let mk name content =
     let tag = match Hashtbl.find_opt tags name with
       | Some tag -> tag
-      | None -> let tag = Sstt.Tag.mk name in Hashtbl.add tags name tag ; tag
+      | None ->
+          let tag = Sstt.Tag.mk name in
+          Hashtbl.add tags name tag ;
+          PrinterCfg.add_printer_param
+            Sstt.Printer.{ aliases = [] ; extensions = [ (tag, printer name) ] } ;
+          tag
     in
     (tag, content) |> Sstt.Descr.mk_tag |> Sstt.Ty.mk_descr
 
@@ -218,8 +247,6 @@ module Structs = struct
           |> Record.mk_closed
         in
         let ty = mk name content in
-        PrinterCfg.add_printer_param
-          Sstt.Printer.{ aliases = [ (ty, name) ] ; extensions = [] } ;
         Hashtbl.add atoms name ty ;
         ty
 
@@ -233,6 +260,9 @@ module Structs = struct
       if tys = [] then acc else (name, tys) :: acc
     ) layouts []
 end
+
+(* An enum whose values form more intervals than this is typed by their hull. *)
+let max_enum_intervals = 8
 
 let typeof_ctype ct =
   let open Rstt in
@@ -260,9 +290,26 @@ let typeof_ctype ct =
         Structs.register name fields ; Structs.atom name
     | Enum (_, enumerators) ->
         if List.for_all (fun (_, value) -> Option.is_some value) enumerators && enumerators <> [] then
-          enumerators
-          |> List.filter_map (fun (_, value) -> Option.map Cint.singl value)
-          |> Ty.disj
+          (* The values of the enumerators, or their hull when they form many
+             intervals: a union of hundreds of sparse singletons (curl's
+             [CURLoption]) makes every operation on the type, printing
+             included, very costly. The hull is a sound over-approximation,
+             and C allows any [int] in an enum variable anyway; the
+             enumerators themselves keep their exact values. *)
+          let values = List.filter_map snd enumerators |> List.sort_uniq compare in
+          (* The runs of consecutive values, as intervals: built from one
+             singleton per value, the type would keep them all apart. *)
+          let runs =
+            List.fold_left (fun runs v ->
+              match runs with
+              | (lo, hi) :: rest when v = hi + 1 -> (lo, v) :: rest
+              | _ -> (v, v) :: runs) [] values
+            |> List.rev
+          in
+          if List.length runs <= max_enum_intervals then
+            List.map (fun (lo, hi) -> Cint.interval (Some lo, Some hi)) runs |> Ty.disj
+          else
+            Cint.interval (Some (fst (List.hd runs)), Some (snd (List.nth runs (List.length runs - 1))))
         else
           Cint.any_na
     | FunPtr (ret, params, variadic) ->

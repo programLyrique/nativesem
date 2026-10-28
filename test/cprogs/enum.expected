@@ -4,3 +4,9 @@ flip_direction: ([c(-1)] -> c_true) & ([c_false] -> c_false) & ([c_true] -> c(-1
 
 mask_value: () -> c_true
 
+use_small: ([c(2)] -> c_true) & ([c_bool | c(3)] -> c_false)
+
+use_sparse: ([c(0..29) | c(31..90)] -> c_false) & ([c(30)] -> c_true)
+
+give: () -> c(50)
+
