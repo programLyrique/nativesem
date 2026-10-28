@@ -203,8 +203,40 @@ and eval_preproc_binary defines (bin_expr : preproc_binary_expression) : int =
    the body inference). [#define]/[#undef]/[#include] inside a function body
    are not handled here — they're rare and stay as inert [block_item]s that
    [aux_block_item] already drops. *)
+(* [if (c)] followed by an [#if] block: tree-sitter ends the [if] with an
+   empty statement whose [;] is missing (zero-length), and the branch's
+   statements follow it. *)
+let is_missing_stmt : statement -> bool = function
+  | `Choice_attr_stmt (`Exp_stmt (None, (loc, _))) -> loc.Loc.start = loc.Loc.end_
+  | _ -> false
+
+(* Gives the missing body of [stmt], if any, the statement [next], as the
+   preprocessor's output would. *)
+let rec fill_missing_body (stmt : statement) (next : statement) : statement option =
+  let fill s = if is_missing_stmt s then Some next else fill_missing_body s next in
+  match stmt with
+  | `Choice_attr_stmt (`If_stmt (tok, cond, then_, None)) ->
+      Option.map (fun t -> `Choice_attr_stmt (`If_stmt (tok, cond, t, None))) (fill then_)
+  | `Choice_attr_stmt (`If_stmt (tok, cond, then_, Some (else_tok, else_))) ->
+      Option.map (fun e -> `Choice_attr_stmt (`If_stmt (tok, cond, then_, Some (else_tok, e))))
+        (fill else_)
+  | `Choice_attr_stmt (`While_stmt (tok, cond, body)) ->
+      Option.map (fun b -> `Choice_attr_stmt (`While_stmt (tok, cond, b))) (fill body)
+  | `Choice_attr_stmt (`For_stmt (tok, lp, header, rp, body)) ->
+      Option.map (fun b -> `Choice_attr_stmt (`For_stmt (tok, lp, header, rp, b))) (fill body)
+  | _ -> None
+
+let rec attach_missing_bodies (items : block_item list) =
+  match items with
+  | `Stmt stmt :: `Stmt next :: rest ->
+      (match fill_missing_body stmt next with
+       | Some stmt -> attach_missing_bodies (`Stmt stmt :: rest)
+       | None -> `Stmt stmt :: attach_missing_bodies (`Stmt next :: rest))
+  | item :: rest -> item :: attach_missing_bodies rest
+  | [] -> []
+
 let rec expand_block_items items =
-  List.concat_map expand_block_item items
+  attach_missing_bodies (List.concat_map expand_block_item items)
 
 and expand_block_item (item : block_item) : block_item list =
   match item with

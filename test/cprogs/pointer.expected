@@ -1,6 +1,6 @@
-assign: [*c_double] -> ()
+assign: ([*c_double] -> ()) & ([c_null] -> empty)
 
-assign_in_array: ([*(*c_double)] -> ()) & ([c_null] -> empty)
+assign_in_array: ([*(*c_double)] -> ()) & ([*c_null] -> empty)
 
 assign_in_struct: ([*struct S] -> ()) & ([c_null] -> empty)
 

@@ -18,7 +18,7 @@ anon_nested: ([*struct AnonOuter] -> c_int_na) & ([c_null] -> empty)
 
 anon_nested2: ([*struct AnonOuter2] -> c_int_na) & ([c_null] -> empty)
 
-anon_nested_cast: [*c_void] -> *struct AnonOuter
+anon_nested_cast: [c_ptr] -> *struct AnonOuter
 
 anon_nested_ptr: ([*struct AnonOuterPtr] -> c_int_na) & ([c_null] -> empty)
 

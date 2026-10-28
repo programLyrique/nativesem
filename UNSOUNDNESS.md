@@ -37,7 +37,11 @@ object is not kept in sync.
   lowered to an assignment to a fresh local (`PAst.aux_e`, `VarAssign` of a
   `Unop`); `p->f = v` gives a new struct value that is discarded. A later
   `*p` or `p->f` still has the type it had before the write, including what
-  inference assumed of it through the parameter's type variable.
+  inference assumed of it through the parameter's type variable. The one
+  case modeled is a local passed by address to a call (`f(&x)`): `x` has any
+  value of its declared type after the call (`PAst.process_call`). An
+  address stored and written through later (`int *p = &x; ... *p = v`) is
+  not.
 - **`arr[i] = v` rebinds `arr` only.** It is modeled as `arr = []<-(arr, i, v)`
   (strong update of the variable). Another pointer to the same array keeps
   the old element type.

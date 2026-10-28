@@ -1,4 +1,4 @@
-check_interrupt_fn: [*c_void] -> ()
+check_interrupt_fn: [c_ptr] -> ()
 
 pending_interrupt: () -> c_bool
 

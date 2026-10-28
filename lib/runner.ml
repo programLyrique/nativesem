@@ -837,7 +837,8 @@ let run_on_pasts opts pasts ?entry_points idenv env =
   let filtered_pasts = List.concat_map (fun (filename, past) ->
       List.filter_map (fun item ->
         match item with
-        | (_,PAst.Fundef (_, name, _, _)) when Call_graph.Callgraph.has_node call_graph name ->
+        | (_, (PAst.Fundef (_, name, _, _) | PAst.MacroDef (name, _, _)))
+          when Call_graph.Callgraph.has_node call_graph name ->
             Some (filename, item)
         | _ -> None
       ) past

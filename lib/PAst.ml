@@ -968,10 +968,19 @@ and aux_block env stmts =
          | _, VarDeclare (typ, (_, Id s)) ->
              let env', v = add_var_top ~ty:typ env s in
              let typ = resolve_ctype env.decl typ in
+             let initialized = match rest with
+               | (_, VarAssign ((_, Id s'), _)) :: _ -> s' = s
+               | _ -> false
+             in
              let init_e =
                if has_struct_type typ then
                  fresh_e env (Ast.VarAssign (v,
                    fresh_e env (Ast.Cast (typ, fresh_e env (Ast.Const Ast.CNull)))))
+               else if not initialized && MVariable.kind v = MVariable.Mut then
+                 (* Without an initializer, the variable holds some value of
+                    its type ([long r; f(&r);]). An annotated cell is left
+                    alone: its type is not the declared one. *)
+                 fresh_e env (Ast.VarAssign (v, fresh_e env (Ast.AnyValue typ)))
                else
                  fresh_e env Ast.Noop
              in
@@ -1083,7 +1092,24 @@ and process_call env f args =
       Ast.Call (aux_e env f, List.map (aux_e env) (first :: rest))
   | (_, Id fname), _ -> call_variadic_aware env (Name.Ident fname) (aux_e env f) args
   | _ -> Ast.Call (aux_e env f, List.map (aux_e env) args) in
-  e
+  (* A local passed by address ([f(&x)], e.g. [curl_url_get(h, part, &str, 0)])
+     has any value of its declared type after the call: the callee may write
+     through the address. *)
+  let addressed = List.filter_map (function
+      | _, Unop ("&", (_, Id x)) ->
+          (match lookup_binding env x with
+           | Some v when MVariable.kind v = MVariable.Mut ->
+               Option.map (fun ty -> (v, ty)) (Ast.VarMap.find_opt v env.ctypes)
+           | _ -> None)
+      | _ -> None) args
+  in
+  if addressed = [] then e
+  else
+    let result = MVariable.create MVariable.Immut (Some "_call") in
+    let after = List.fold_right (fun (v, ty) e ->
+        Ast.Seq (fresh_e env (Ast.VarAssign (v, fresh_e env (Ast.AnyValue ty))), fresh_e env e))
+        addressed (Ast.Id result) in
+    Ast.Let (result, fresh_e env e, fresh_e env after)
 (* A call of the definition bound as [key], whose callee is already
    translated. [args] beyond the named parameters of a variadic definition are
    evaluated before the call but not passed: the definition is typed from its

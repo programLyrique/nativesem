@@ -1,0 +1,12 @@
+Entry points detected: Call=1, C=0, Fortran=0, External=0
+Entry points for .Call convention:
+  R_first
+
+Entry points for .C convention:
+
+make_string: ∀'a. ([c_null] -> na_string) & ([c_string('a)] -> ^CHR1('a))
+
+first_string: [CHR] -> c_string
+
+R_first: [CHR] -> ^CHR1
+

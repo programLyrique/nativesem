@@ -121,6 +121,9 @@ type e' =
 | LabelBlock of string * e
   (* The statements a [goto label] may leave ([PAst.label_blocks]). *)
 | GotoLabel of string
+| AnyValue of ctype
+  (* Any value of a variable declared with this type: what a callee may have
+     written through its address ([PAst.process_call]). *)
   (* Implicit narrowing conversion (C's [void* -> T*] at a typed pointer
      initialization). Lowers to [TypeCast] (intersecting cast: result is
      [target & source]) rather than [Cast]'s [TypeCoerce] (replacement), so it
@@ -275,6 +278,10 @@ let typeof_ctype ct =
     | Char -> Cenums.char
     | Bool -> Cint.bool
     | Ptr Char -> Cptr.string
+    (* Any pointer converts to [void*]. *)
+    | Ptr Void -> Cptr.any
+    (* The pointer [*p] may be [NULL], which [char*]'s type excludes. *)
+    | Ptr (Ptr _ as ty) -> Cptr.mk_nonstring (Ty.cup (aux ty) Cptr.null)
     | Ptr ty -> Cptr.mk_nonstring (aux ty)
     | SEXP -> Defs.any_sexp
     | Any -> Ty.any
@@ -326,6 +333,13 @@ let typeof_ctype ct =
     | _ -> failwith ("Type not supported yet in typeof_ctype: " ^ show_ctype ct)
   in
   aux ct
+
+(* The values a variable declared with C type [ct] can hold: a pointer may be
+   [NULL], which [char*]'s type ([Cptr.string]) excludes. *)
+let content_type ct =
+  match ct with
+  | Ptr _ -> Ty.cup (typeof_ctype ct) Rstt.Cptr.null
+  | _ -> typeof_ctype ct
 
 
 (* [e.label]: [struct S -> T] for each struct [S] with a field [label] of C type
@@ -704,7 +718,8 @@ let rec aux_e (eid, _decl, vars, e) =
         (* Intersecting cast: result is [typeof(ty) & source], so an
            already-precise initializer is preserved and only a too-wide one is
            narrowed to the declared pointer type. *)
-        A.TypeCast (e, typeof_ctype ty |> GTy.mk , SA.NoCheck)
+        A.TypeCast (e, GTy.mk (content_type ty), SA.NoCheck)
+    | AnyValue ty -> A.Value (GTy.mk (content_type ty))
     | Function (_name, _ret_type, params, body, self) ->
       (* Create lets in the body for each argument: match parameter names with
        type variable in the domain *)
@@ -818,6 +833,7 @@ let rec aux_e (eid, _decl, vars, e) =
       | CoerceNarrow (ty, e) -> CoerceNarrow (ty, aux e)
       | LabelBlock (l, e) -> LabelBlock (l, aux e)
       | GotoLabel l -> GotoLabel l
+      | AnyValue ty -> AnyValue ty
       | Function (name, ret_type, params, body, self) ->
           Function (name, ret_type, params, aux body, self)
       | Switch (e, cases) ->
@@ -1070,7 +1086,7 @@ let rec aux_e (eid, _decl, vars, e) =
           let body', _, _ = aux body env0 in
           ((id, decl, env, LabelBlock (l, body')), env0, None)
 
-      | GotoLabel _ -> ((id, decl, env, expr), env, None)
+      | GotoLabel _ | AnyValue _ -> ((id, decl, env, expr), env, None)
 
       | Function (name, ret_type, params, body, self) ->
           (* Do not propagate outer constants into function bodies. *)

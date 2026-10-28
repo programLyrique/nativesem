@@ -1,6 +1,6 @@
-takes_bool: ([c(..-1) | c(1..)] -> c_false) & ([c_false] -> c_true)
+takes_bool: ([c_false] -> c_true) & ([c_int_na \ c_false] -> c_false)
 
-int_to_bool: ([c(..-1) | c(1..)] -> c_false) & ([c_false] -> c_true)
+int_to_bool: ([c_false] -> c_true) & ([c_int_na \ c_false] -> c_false)
 
 takes_int: ([c_int] -> c_int) & ([c_int_na] -> c_int_na)
 

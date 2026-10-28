@@ -4,3 +4,9 @@ selected_by_ifndef: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 
 selected_by_linux_define: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
 
+body_in_branch: ([c_false] -> ()) & ([c_int_na \ c_false] -> empty)
+
+else_body_in_branch: ([c_false] -> c(2)) & ([c_int_na \ c_false] -> c_true)
+
+body_after_branch: ([c_false] -> c(3)) & ([c_int_na \ c_false] -> c(2))
+

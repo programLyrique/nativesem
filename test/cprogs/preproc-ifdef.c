@@ -35,3 +35,32 @@ SEXP skipped_linux_else(SEXP x) {
     return R_NilValue;
 }
 #endif
+
+/* The body of an [if] is the first statement of the selected branch. */
+void body_in_branch(int err) {
+    if (err != 0)
+#ifdef MISSING_FLAG
+        Rf_error("a");
+#else
+        Rf_error("b");
+#endif
+}
+
+int else_body_in_branch(int err) {
+    if (err != 0)
+        return 1;
+    else
+#ifndef MISSING_FLAG
+        return 2;
+#endif
+}
+
+/* An empty branch: the body is the statement after [#endif]. */
+int body_after_branch(int err) {
+    if (err != 0)
+#ifdef MISSING_FLAG
+        return 1;
+#endif
+    return 2;
+    return 3;
+}

@@ -81,6 +81,22 @@
  (alias runtest)
  (deps
   (glob_files ../types/*.ty)
+  (source_tree packages/header-macros))
+ (action
+  (with-stdout-to
+   header-macros.output
+   (run %{exe:package_test.exe} packages/header-macros))))
+
+(rule
+ (alias runtest)
+ (deps packages/header-macros.expected header-macros.output)
+ (action
+  (diff packages/header-macros.expected header-macros.output)))
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files ../types/*.ty)
   (source_tree packages/cross-file-struct))
  (action
   (with-stdout-to

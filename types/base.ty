@@ -175,8 +175,8 @@ Rf_asS4:     [any_sexp] --> any_sexp
 Rf_isS4:     [any_sexp] --> c_bool
 Rf_onintr:   [] --> c_void
 Rf_lengthgets: [vec | list | lang, c_int] --> any_sexp
-Rf_ParseVector: [any_sexp, c_int, *c_int, CHR1] --> any_sexp // the 2 sexp arguments are probably STRSXP actually and the return type, an expr?
-R_ParseVector: [any_sexp, c_int, *c_int, any_sexp] --> expr
+Rf_ParseVector: [any_sexp, c_int, *c_int_na, CHR1] --> any_sexp // the 2 sexp arguments are probably STRSXP actually and the return type, an expr?
+R_ParseVector: [any_sexp, c_int, *c_int_na, any_sexp] --> expr
 R_GetBindingType: [sym, env] --> c_int
 
 // R API: external pointers (extended)
@@ -245,15 +245,16 @@ SHALLOW_DUPLICATE_ATTRIB: [any_sexp, any_sexp] --> c_void
 // left as [any].
 R_mapAttrib: [any_sexp, any, *any] --> any_sexp
 
-[]<-: ([*'a, c_int_na, 'a] --> *'a) & ([c_string, c_int_na, c_char] --> c_string)
-[]: ([*'a, c_int_na] --> 'a) & ([c_string, c_int_na] --> c_char)
+// Subscripting a null pointer does not return.
+[]<-: ([*'a, c_int_na, 'a] --> *'a) & ([c_string, c_int_na, c_char] --> c_string) & ([c_null, c_int_na, any] --> empty)
+[]: ([*'a, c_int_na] --> 'a) & ([c_string, c_int_na] --> c_char) & ([c_null, c_int_na] --> empty)
 
 PROTECT_INDEX: c_int
 
 PROTECT: ['a] --> 'a
 UNPROTECT: [c_int] --> c_void
 REPROTECT: [any_sexp, c_int] --> c_void
-PROTECT_WITH_INDEX: [any_sexp, *c_int] --> c_void
+PROTECT_WITH_INDEX: [any_sexp, *c_int_na] --> c_void
 R_PreserveObject: [any_sexp] --> c_void
 R_ReleaseObject: [any_sexp] --> c_void
 
@@ -317,12 +318,13 @@ CDR: [lang] --> lang | null
 // The second operand is not evaluated when the first decides (short circuit),
 // hence [any] there. (Doubles are not covered, as in !__1.)
 c_falsy = c_false | c_null
-c_truthy = c(.. -1) | c(1 ..) | (*any \ c_null) | c_string
+// NA_INTEGER is INT_MIN, a nonzero int.
+c_truthy = c(.. -1) | c(1 ..) | (c_int_na \ c_int) | (*any \ c_null) | c_string
 ||__2: ([c_truthy, any] | [c_falsy, c_truthy] --> c_true) & ([c_falsy, c_falsy] --> c_false)
 &&__2: ([c_falsy, any] | [c_truthy, c_falsy] --> c_false) & ([c_truthy, c_truthy] --> c_true)
 ==__2: [any, any] --> c_bool
 !=__2: [any, any] --> c_bool
-!__1: ([c_true] --> c_false) & ([c_false] --> c_true) & ([c(.. -1) | c(1 ..)] --> c_false) & ([c_null] --> c_true) & ([*any \ c_null] --> c_false) & ([c_string] --> c_false)
+!__1: ([c_true] --> c_false) & ([c_false] --> c_true) & ([c(.. -1) | c(1 ..) | (c_int_na \ c_int)] --> c_false) & ([c_null] --> c_true) & ([*any \ c_null] --> c_false) & ([c_string] --> c_false)
 <__2: ([c_int, c_int] --> c_bool) & ([c_double, c_double] --> c_bool) & ([any, any] --> c_bool)
 >__2: ([c_int, c_int] --> c_bool) & ([c_double, c_double] --> c_bool) & ([any, any] --> c_bool)
 <=__2: ([c_int, c_int] --> c_bool) & ([c_double, c_double] --> c_bool) & ([any, any] --> c_bool)
@@ -386,7 +388,7 @@ isFunction: ([empty -> any] --> c_true) & ([~(empty -> any)] --> c_false)
 
 // R API: evaluation
 R_ToplevelExec: [any, *any] --> c_bool
-R_tryEval: [any_sexp, env, *c_int] --> any_sexp
+R_tryEval: [any_sexp, env, *c_int_na] --> any_sexp
 R_CheckUserInterrupt: [] --> c_void
 
 // R API: pairlists

@@ -6,7 +6,7 @@ pre_value: () -> c_int
 
 chain: () -> c(3)
 
-assign_cond: ∀'a. ([() --> c_false & 'a] -> c_false) & ([() --> c_int_na & 'a] -> c_false | 'a \ c_null) & ([() --> c_int_na \ c_false & 'a] -> 'a & (c_int_na \ c_false | c_ptr \ c_null))
+assign_cond: ∀'a. ([() --> c_false & 'a] -> c_false) & ([() --> c_int_na & 'a] -> c_false | 'a \ c_null) & ([() --> c_int_na \ c_false & 'a] -> c_truthy & 'a)
 
 after_if: [c_false] | [c_int_na \ c_false] -> c_int
 
