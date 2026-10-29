@@ -1207,15 +1207,22 @@ and aux_switch_statement (switch_stmt: switch_statement) =
 
   match body with
   | pos, A.Block lst ->
-      (* Filter out non-case/non-default items that can appear in the switch
-         compound statement (e.g. preprocessor directives turned into Const CNull,
-         or declarations). Only Case and Default are meaningful to the switch.
-         TODO: actually support the preprocessor inside here*)
-      let lst = List.filter (fun (_, item) ->
-        match item with
-        | A.Case _ | A.Default _ -> true
-        | _ -> false
-      ) lst in
+      (* A statement that is not a case belongs to the case before it, as in
+         C: tree-sitter ends a case at an [#endif], so in
+         [case A: #if X case B: #endif return 1;] the [return] comes after
+         the [#if] block, outside any case. The items before the first case
+         are never executed. *)
+      let append (pos, body) stmt = match body with
+        | A.Seq stmts -> (pos, A.Seq (stmts @ [ stmt ]))
+        | _ -> (pos, A.Seq [ (pos, body) ; stmt ])
+      in
+      let lst = List.fold_left (fun acc ((_, item) as stmt) ->
+        match item, acc with
+        | (A.Case _ | A.Default _), _ -> stmt :: acc
+        | _, (pos, A.Case (e, body)) :: rest -> (pos, A.Case (e, append body stmt)) :: rest
+        | _, (pos, A.Default body) :: rest -> (pos, A.Default (append body stmt)) :: rest
+        | _, _ -> acc
+      ) [] lst |> List.rev in
       (Position.join (loc_to_pos loc1) pos, A.Switch (expr, lst))
   | _ -> failwith "Unexpected body in switch statement"
 

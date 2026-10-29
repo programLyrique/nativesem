@@ -89,3 +89,20 @@ INLINE_FUN R_len_t length3(SEXP s)
         return 1;
     }
 }
+
+// A case label inside an #if: tree-sitter ends the case at the #endif, and
+// the statements after it still belong to the cases above (utf8's
+// rutf8_encodes_utf8).
+enum pp_case { PP_A, PP_B, PP_C, PP_D };
+int case_in_if(enum pp_case ce)
+{
+    switch (ce) {
+    case PP_A:
+#if !defined(_WIN32)
+    case PP_C:
+#endif
+        return 1;
+    default:
+        return 0;
+    }
+}
