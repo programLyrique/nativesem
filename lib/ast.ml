@@ -847,20 +847,49 @@ let rec aux_e (eid, _decl, vars, e) =
   in aux e
 
 
+  (* [e == c] is the test [e : typeof(c)] only when [typeof(c)] has a single
+     value: a [char] or [double] literal has the type of all chars or
+     doubles, a string literal is compared by address, and a global [SEXP]
+     ([R_GlobalEnv], a package's own [strings_dots]) has a type with many
+     values. Otherwise the comparison stays a [c_bool]. *)
+  let exact_const = function
+    | CInt _ | CBool _ | CNull | CNa -> true
+    | CChar _ | CStr _ | CDbl _ | CArray _ -> false
+
+  (* The names of the [.ty] files whose type has a single value: the
+     SEXPTYPE codes ([INTSXP]...) and these. *)
+  let exact_ty_names =
+    [ "R_NilValue" ; "NA_STRING" ; "R_NaString" ; "NA_INTEGER" ; "R_NaInt" ; "NA_LOGICAL" ;
+      "TRUE" ; "FALSE" ]
+
+  (* The type of [v] when it has a single value. A [.ty] type comes first: R's
+     headers declare [R_NaString] and [R_NaInt] (what [NA_STRING] and
+     [NA_INTEGER] expand to) as plain [SEXP] and [int] globals. *)
+  let exact_builtin v =
+    match Variable.get_name v with
+    | Some name when List.mem name exact_ty_names || String.ends_with ~suffix:"SXP" name ->
+        (match Rstt.Builder.StrMap.find_opt name Defs.parsed_types with
+         | Some ty -> Some ty
+         | None -> Defs.BuiltinVar.find_builtin v)
+    | Some name when Defs.BuiltinVar.is_exact name -> Defs.BuiltinVar.find_builtin v
+    | _ -> None
+
   let recognize_const_comparison e =
     let f expr = match expr with 
     | id, decl, vars, (Binop (op, e, (_,_,_,Const c)) | Binop (op, (_,_,_,Const c), e))
-    when Variable.equal op Defs.BuiltinOp.eq -> id, decl, vars, TyCheck (e, typeof_const c)
+    when Variable.equal op Defs.BuiltinOp.eq ->
+      if exact_const c then id, decl, vars, TyCheck (e, typeof_const c) else expr
     | id, decl, vars, (Binop (op, e, (_,_,_,Id v)) | Binop (op, (_,_,_,Id v), e))
     when Variable.equal op Defs.BuiltinOp.eq -> 
-      (match Defs.BuiltinVar.find_builtin v with 
+      (match exact_builtin v with 
       | Some built -> id, decl, vars, TyCheck (e, built)
       | None -> expr)
     | id, decl, vars, (Binop (op, e, (_,_,_,Const c)) | Binop (op, (_,_,_,Const c), e))
-    when Variable.equal op Defs.BuiltinOp.neq -> id, decl, vars, TyCheck (e, Ty.neg (typeof_const c))
+    when Variable.equal op Defs.BuiltinOp.neq ->
+      if exact_const c then id, decl, vars, TyCheck (e, Ty.neg (typeof_const c)) else expr
     | id, decl, vars, (Binop (op, e, (_,_,_,Id v)) | Binop (op, (_,_,_,Id v), e))
     when Variable.equal op Defs.BuiltinOp.neq -> 
-      (match Defs.BuiltinVar.find_builtin v with 
+      (match exact_builtin v with 
       | Some built -> id, decl, vars, TyCheck (e, Ty.neg built)
       | None -> expr)
     | id, decl, vars, (Binop (op, e, (_, _,_,Const (CInt c))) | Binop (op, (_, _,_,Const (CInt c)), e))

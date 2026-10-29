@@ -117,6 +117,7 @@ STRING_ELT: [v(CHR & 'a), c_int] --> p('a)
 SET_STRING_ELT: ([v1(CHR & 'e), c_int, p(CHR & 's)] --> v1((CHR & 'e) | (CHR & 's))) & ([v(CHR & 'e), c_int, p(CHR & 's)] --> v((CHR & 'e) | (CHR & 's)))
 StringBlank: ([p("")] --> c_true) & ([p(CHR \ "")] --> c_false) & ([null] --> c_true) 
 NA_STRING: na_string
+R_NaString: na_string
 asChar: ([vec] --> p(CHR)) & ([p(CHR) & 'a] --> 'a) & ([sym] --> p(CHR)) & ([any_r_not_vec \ (sym | p(CHR))] --> na_string)
 type2char:  ([p(INT)] --> c("integer")) & ([p(DBL)] --> c("double")) & ([p(LGL)] --> c("logical")) & ([p(CHR)] --> c("character")) & ([p(CLX)] --> c("complex")) & ([p(RAW)] --> c("raw")) & ([list] --> c("list")) & ([null] --> c("NULL")) & ([env] --> c("environment")) & ([sym] --> c("symbol")) & ([lang] --> c("language")) & ([expr] --> c("expression")) & ([empty -> any] --> c("closure"))
 isString: ([v(CHR)] --> c_true) & ([any_sexp \ v(CHR)] --> c_false)
@@ -337,8 +338,10 @@ c_truthy = c(.. -1) | c(1 ..) | (c_int_na \ c_int) | (*any \ c_null) | c_string
 // type of every SEXP bound at its C signature.
 TYPEOF: ([v('a)] --> 'a) & (['b & ~vec & (any_r_not_vec | any_sexp)] --> 'b)
 
-NA_INTEGER: c_int_na
-NA_LOGICAL: c_int_na
+// NA alone: [x == NA_INTEGER] tests for this value (Ast.recognize_const_comparison).
+NA_INTEGER: c_int_na \ c_int
+R_NaInt: c_int_na \ c_int
+NA_LOGICAL: c_int_na \ c_int
 // No c_double_na token; mirror R_NaN's plain c_double (double-NA is a NaN bit pattern).
 NA_REAL: c_double
 

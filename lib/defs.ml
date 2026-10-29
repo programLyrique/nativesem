@@ -571,6 +571,15 @@ let register_dynamic_binding ?(mut = false) ?annot name ty : Variable.t * Ty.t =
 let register_dynamic ?mut name ty : Variable.t =
   fst (register_dynamic_binding ?mut name ty)
 
+(* The names registered above whose type has a single value (an enumerator,
+   a [#define] of an integer): [x == NAME] is then the test [x : type]
+   ([Ast.recognize_const_comparison]). A global variable is not one. *)
+let exact : (string, unit) Hashtbl.t = Hashtbl.create 64
+
+let mark_exact name = Hashtbl.replace exact name ()
+
+let is_exact name = Hashtbl.mem exact name
+
 let find_builtin (v : Variable.t) =
   let name = Variable.get_name v in
   let from_all = List.find_opt (fun (v2, _) ->

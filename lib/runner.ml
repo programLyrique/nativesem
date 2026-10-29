@@ -182,6 +182,7 @@ let register_enum_constants ty : (Variable.t * Ty.t) list =
             | Some value ->
                 let ty = Rstt.Cint.singl value in
                 let v = Defs.BuiltinVar.register_dynamic name ty in
+                Defs.BuiltinVar.mark_exact name ;
                 Some (v, ty)
             | None -> None)
           enumerators
@@ -479,9 +480,11 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
   | _, PAst.Define (name, value) ->
       let ty = Ast.typeof_const (PAst.aux_const value) |> GTy.mk |> TyScheme.mk_mono in
       let v =
-        if skip_if_defined && not (Defs.StrMap.mem name Defs.defs_map) then
-          Defs.BuiltinVar.register_dynamic name (Ast.typeof_const (PAst.aux_const value))
-        else
+        if skip_if_defined && not (Defs.StrMap.mem name Defs.defs_map) then begin
+          let value = PAst.aux_const value in
+          if Ast.exact_const value then Defs.BuiltinVar.mark_exact name ;
+          Defs.BuiltinVar.register_dynamic name (Ast.typeof_const value)
+        end else
           MVariable.create Immut (Some name)
       in
       if opts.debug && visible then

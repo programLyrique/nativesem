@@ -1,0 +1,18 @@
+char_eq: [c_char] -> c(1..2)
+
+char_neq: [c_char] -> c(1..2)
+
+double_eq: [c_double] -> c(1..2)
+
+global_eq: [any_sexp] -> c_bool
+
+env_eq: [any_sexp] -> c_bool
+
+enum_eq: ([c_false] -> c(2)) & ([c_true] -> c_true)
+
+na_int_eq: ([c_int] -> c_false) & ([c_int_na \ c_int] -> c_true)
+
+na_string_neq: ([any_sexp] -> c_bool) & ([null | sym | attr_any] -> c_true)
+
+nil_eq: ([null] -> c_true) & ([p(CHR) | sym | attr_any] -> c(2))
+

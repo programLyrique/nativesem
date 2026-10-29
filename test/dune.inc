@@ -529,3 +529,14 @@
  (deps    cprogs/empty-statement.c cprogs/empty-statement.expected)
  (action  (diff cprogs/empty-statement.expected empty-statement.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/const-comparison.c)
+ (action  (with-stdout-to const-comparison.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/const-comparison.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/const-comparison.c cprogs/const-comparison.expected)
+ (action  (diff cprogs/const-comparison.expected const-comparison.output)))
+

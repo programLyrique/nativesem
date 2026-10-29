@@ -16,5 +16,5 @@ r_plus_scalar: ([INT, INT] -> INT1) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> D
 
 r_plus_all: ([INT, INT] -> INT) & ([INT1, INT1] -> INT1) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> DBL) & ([DBL1, DBL1] | [DBL1, INT1] | [INT1, DBL1] -> DBL1)
 
-R_integer_plus: [c_int_na, c(..-1), *c_bool \ c_null] | [c_int_na, c(..-1), c_null] | [c_int_na, c(1..), *c_bool \ c_null] | [c_int_na, c(1..), c_null] | [c_int_na, c_int_na \ (c(..-1) | c(1..)), *c_bool] -> c_int_na
+R_integer_plus: ([c_int, c_false, *c_bool] -> c_int) & ([c_int, c(..-1), *c_bool \ c_null] | [c_int, c(..-1), c_null] | [c_int, c(1..), *c_bool \ c_null] | [c_int, c(1..), c_null] -> c_int_na) & ([c_int, c_int_na \ c_int, *c_bool] | [c_int_na \ c_int, c_int_na, *c_bool] -> c_int_na \ c_int)
 
