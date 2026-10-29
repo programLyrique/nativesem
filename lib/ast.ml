@@ -484,6 +484,24 @@ let label_id l =
   | Some i -> i
   | None -> let i = Hashtbl.length label_ids in Hashtbl.add label_ids l i ; i
 
+(* The implicit pointer conversions lowered by [aux_e] ([CoerceNarrow]): the
+   two branches it is lowered to, where the converted value is, and the
+   declared type. [Runner] reads them after inference, to warn about the ones
+   whose value had no common pointee with the declared type. *)
+type narrowing = { narrowed : Eid.t ; replaced : Eid.t ; at : Position.t ; target : ctype }
+let narrowings : narrowing list ref = ref []
+
+(* A C type as written, for messages ([show_ctype] spells out whole structs). *)
+let rec c_spelling = function
+  | Void -> "void" | Int -> "int" | Float -> "double" | Char -> "char" | Bool -> "bool"
+  | Ptr t -> c_spelling t ^ "*"
+  | Array (t, _) -> c_spelling t ^ "[]"
+  | Struct (s, _) -> "struct " ^ s
+  | Union (s, _) -> "union " ^ s
+  | Enum (s, _) -> "enum " ^ s
+  | Typeref s -> s
+  | t -> show_ctype t
+
 let rec aux_e (eid, _decl, vars, e) =
   let int_const_of_expr expr =
     match expr with
@@ -714,11 +732,33 @@ let rec aux_e (eid, _decl, vars, e) =
            code after the label is reached; a [Ret] without a value would just
            end the path. *)
         A.Ret (A.BOther (label_id l), Some (Eid.unique (), A.Value (GTy.mk Rstt.Cenums.void)))
-    | CoerceNarrow (ty, e) -> let e = aux_e e in
-        (* Intersecting cast: result is [typeof(ty) & source], so an
+    | CoerceNarrow (ty, e) ->
+        (* [let x = e in if x : NULL then x
+                        else if x : T \ NULL then cast(x, T) else coerce(x, T)].
+           The middle branch is an intersecting cast ([T & source]), so an
            already-precise initializer is preserved and only a too-wide one is
-           narrowed to the declared pointer type. *)
-        A.TypeCast (e, GTy.mk (content_type ty), SA.NoCheck)
+           narrowed to the declared pointer type. The last takes the non-null
+           pointers that are not [T] -- untyped memory, e.g. a struct laid out
+           in [RAW()] -- and gives them the declared type, as an explicit cast
+           would. Intersecting alone gave such a pointer the type of [NULL]
+           (the pointer to [empty]), and the code reading through it was then
+           unreachable. [NULL] is kept apart so that it stays precise. When
+           only the last branch is reached, [Runner] warns. *)
+        let target = content_type ty in
+        let x = MVariable.create Immut None in
+        let var () = (Eid.unique (), A.Var x) in
+        (* Ids with notices enabled: [Runner] asks mlsem's analyzer which
+           branches are reachable, and it skips the other ids. *)
+        let (src_eid, _, _, _) = e in
+        let branch_id () = Eid.unique_with_pos (Eid.loc src_eid) in
+        let narrowed = (branch_id (), A.TypeCast (var (), GTy.mk target, SA.NoCheck)) in
+        let replaced = (branch_id (), A.TypeCoerce (var (), GTy.mk target, SA.NoCheck)) in
+        narrowings := { narrowed = fst narrowed ; replaced = fst replaced ;
+                        at = Eid.loc src_eid ; target = ty } :: !narrowings ;
+        let non_null = GTy.mk (Ty.diff target Rstt.Cptr.null) in
+        A.Let ([], x, aux_e e,
+          (Eid.unique (), A.Ite (var (), GTy.mk Rstt.Cptr.null, var (),
+            (Eid.unique (), A.Ite (var (), non_null, narrowed, replaced)))))
     | AnyValue ty -> A.Value (GTy.mk (content_type ty))
     | Function (_name, _ret_type, params, body, self) ->
       (* Create lets in the body for each argument: match parameter names with

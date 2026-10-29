@@ -4,3 +4,13 @@ get_buf: () --> c_string
 
 C_voidptr_keeps_precision: () -> p(^CHR)
 
+raw_begin: [raw] -> *c_int
+
+C_raw_struct_via_helper: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
+
+C_raw_struct_via_void: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
+
+C_raw_struct_via_cast: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
+
+C_maybe_null: ([DBL, c_int_na \ c_false] -> *c_double) & ([any_sexp, c_false] -> c_null)
+

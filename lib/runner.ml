@@ -289,6 +289,31 @@ let complete_degenerate vars typ declared =
 (* [alternative]: another valid type of the function (a recursive function
    typed as a [LambdaRec], see [infer_def]), intersected with the inferred one,
    or used instead of the C signature when inference fails. *)
+(* The implicit pointer conversions of [name] whose value had no common
+   pointee with the declared type, e.g. a struct laid out in [RAW()]: only the
+   replacing branch of their lowering ([Ast.narrowings]) is reached. They are
+   typed at the declared type, as an explicit cast would be; a warning on
+   stderr keeps the rare real confusions visible. *)
+let warn_pointer_fallbacks name m reconstructed narrowings =
+  if narrowings <> [] then
+    match System.Analyzer.analyze m reconstructed with
+    | exception Failure _ -> ()
+    | _, visited ->
+      let unreachable =
+        System.Analyzer.get_unreachable visited m
+        |> List.map (fun (msg : System.Analyzer.msg) -> msg.eid) in
+      let reached eid = not (List.exists (Eid.equal eid) unreachable) in
+      narrowings |> List.rev |> List.iter (fun (n : Ast.narrowing) ->
+        if not (reached n.narrowed) && reached n.replaced then
+          (* Positions keep tree-sitter's 0-based rows, and no file name. *)
+          let line =
+            if n.at = Position.dummy then ""
+            else Printf.sprintf ", line %d" (Position.line (Position.start_of_position n.at) + 1) in
+          let ty = Ast.c_spelling n.target in
+          Format.eprintf
+            "warning: %s%s: pointer conversion to %s with no common pointee with the value; using %s@."
+            name line ty ty)
+
 let infer_ast ?fallback ?completion ?alternative ~key visible opts (idenv, env, decl) (ast : Ast.e) =
   let name,v =
     match ast with
@@ -331,7 +356,9 @@ let infer_ast ?fallback ?completion ?alternative ~key visible opts (idenv, env, 
     | None -> failwith "mlsem AST not built"
   in
   try
+    Ast.narrowings := [] ;
     let m = Ast.to_mlsem ast in
+    let narrowings = !Ast.narrowings in
     mlsem_ast := Some m;
     if opts.mlsem && visible then
       Format.printf "%a@." Mlsem.System.Ast.pp m;
@@ -341,6 +368,7 @@ let infer_ast ?fallback ?completion ?alternative ~key visible opts (idenv, env, 
           let renvs = System.Refinement.refinements env m in
           let reconstructed = System.Reconstruction.infer env renvs m in
           let typ = System.Checker.typeof_def env reconstructed m in
+          warn_pointer_fallbacks name m reconstructed narrowings ;
           let tys = norm_and_simpl typ in
           let (vars, typ) = TyScheme.get tys in
           let typ = GTy.ub typ in
