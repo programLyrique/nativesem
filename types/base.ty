@@ -27,6 +27,13 @@ any_sexp = p(CHR) | attr | null | sym //
 // This is maybe too unconstrained as sexp can have content be a C type, not only a R type. 
 // Maybe it would be better to tighten Defs.any_sexp...
 
+// R's NA as a C int: NA_INTEGER and NA_LOGICAL are the same value, R_NaInt
+// (INT_MIN). [c_na] is RSTT's name for it; defining it as an alias makes the
+// printer use it too, instead of [c_int_na \ c_int].
+c_na = c_int_na \ c_int
+// An element of a logical vector: TRUE, FALSE or NA_LOGICAL.
+c_lgl = c_bool | c_na
+
 
 // R's own C typedefs, from headers that are not parsed (Rinternals.h,
 // R_ext/Boolean.h, ...). An undeclared typedef takes the type given
@@ -51,8 +58,8 @@ INTEGER: ([v1(^INT)] --> *c_int) & ([v(INT)] --> *c_int_na)
 INTEGER_RO: ([v1(^INT)] --> *c_int) & ([v(INT)] --> *c_int_na)
 REAL: [v(DBL)] --> *c_double
 REAL_RO: [v(DBL)] --> *c_double
-LOGICAL: [v(LGL)] --> *c_int
-LOGICAL_RO: [v(LGL)] --> *c_int
+LOGICAL: ([v1(^LGL)] --> *c_bool) & ([v(LGL)] --> *c_lgl)
+LOGICAL_RO: ([v1(^LGL)] --> *c_bool) & ([v(LGL)] --> *c_lgl)
 
 
 // Lengths are not tracked anymore; only the scalar case stays exact.
@@ -218,8 +225,9 @@ Rf_charIsASCII: [p(CHR)] --> c_bool
 R_new_custom_connection: [c_string, c_string, c_string, *any] --> any_sexp
 
 // Casts
-asLogical: [any_sexp] --> c_true | c_false
-asInteger: [any_sexp] --> c_int
+// NA_LOGICAL for NA or a value that does not convert.
+asLogical: [any_sexp] --> c_lgl
+asInteger: [any_sexp] --> c_int_na
 // Rf_asCharacterFactor: maps a factor's integer codes through its levels, so the
 // input must be a factor (v(INT) with class factor; ... allows ordered factors).
 // Result is a STRSXP whose elements are the level strings (level content not
@@ -320,12 +328,12 @@ CDR: [lang] --> lang | null
 // hence [any] there. (Doubles are not covered, as in !__1.)
 c_falsy = c_false | c_null
 // NA_INTEGER is INT_MIN, a nonzero int.
-c_truthy = c(.. -1) | c(1 ..) | (c_int_na \ c_int) | (*any \ c_null) | c_string
+c_truthy = c(.. -1) | c(1 ..) | c_na | (*any \ c_null) | c_string
 ||__2: ([c_truthy, any] | [c_falsy, c_truthy] --> c_true) & ([c_falsy, c_falsy] --> c_false)
 &&__2: ([c_falsy, any] | [c_truthy, c_falsy] --> c_false) & ([c_truthy, c_truthy] --> c_true)
 ==__2: [any, any] --> c_bool
 !=__2: [any, any] --> c_bool
-!__1: ([c_true] --> c_false) & ([c_false] --> c_true) & ([c(.. -1) | c(1 ..) | (c_int_na \ c_int)] --> c_false) & ([c_null] --> c_true) & ([*any \ c_null] --> c_false) & ([c_string] --> c_false)
+!__1: ([c_true] --> c_false) & ([c_false] --> c_true) & ([c(.. -1) | c(1 ..) | c_na] --> c_false) & ([c_null] --> c_true) & ([*any \ c_null] --> c_false) & ([c_string] --> c_false)
 <__2: ([c_int, c_int] --> c_bool) & ([c_double, c_double] --> c_bool) & ([any, any] --> c_bool)
 >__2: ([c_int, c_int] --> c_bool) & ([c_double, c_double] --> c_bool) & ([any, any] --> c_bool)
 <=__2: ([c_int, c_int] --> c_bool) & ([c_double, c_double] --> c_bool) & ([any, any] --> c_bool)
@@ -339,9 +347,9 @@ c_truthy = c(.. -1) | c(1 ..) | (c_int_na \ c_int) | (*any \ c_null) | c_string
 TYPEOF: ([v('a)] --> 'a) & (['b & ~vec & (any_r_not_vec | any_sexp)] --> 'b)
 
 // NA alone: [x == NA_INTEGER] tests for this value (Ast.recognize_const_comparison).
-NA_INTEGER: c_int_na \ c_int
-R_NaInt: c_int_na \ c_int
-NA_LOGICAL: c_int_na \ c_int
+NA_INTEGER: c_na
+R_NaInt: c_na
+NA_LOGICAL: c_na
 // No c_double_na token; mirror R_NaN's plain c_double (double-NA is a NaN bit pattern).
 NA_REAL: c_double
 
