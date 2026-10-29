@@ -756,9 +756,15 @@ let rec aux_e (eid, _decl, vars, e) =
         narrowings := { narrowed = fst narrowed ; replaced = fst replaced ;
                         at = Eid.loc src_eid ; target = ty } :: !narrowings ;
         let non_null = GTy.mk (Ty.diff target Rstt.Cptr.null) in
-        A.Let ([], x, aux_e e,
-          (Eid.unique (), A.Ite (var (), GTy.mk Rstt.Cptr.null, var (),
-            (Eid.unique (), A.Ite (var (), non_null, narrowed, replaced)))))
+        let not_null = (Eid.unique (), A.Ite (var (), non_null, narrowed, replaced)) in
+        (* Only a declared type that can be [NULL] keeps it: [r_obj*], an R
+           value, cannot, and a value of type [any] (or a type variable) would
+           otherwise bring a [NULL] part along. *)
+        let body =
+          if Ty.leq (Ty.cap target Rstt.Cptr.null) Ty.empty then not_null
+          else (Eid.unique (), A.Ite (var (), GTy.mk Rstt.Cptr.null, var (), not_null))
+        in
+        A.Let ([], x, aux_e e, body)
     | AnyValue ty -> A.Value (GTy.mk (content_type ty))
     | Function (_name, _ret_type, params, body, self) ->
       (* Create lets in the body for each argument: match parameter names with
