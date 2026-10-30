@@ -732,6 +732,14 @@ let rec aux_e (eid, _decl, vars, e) =
            code after the label is reached; a [Ret] without a value would just
            end the path. *)
         A.Ret (A.BOther (label_id l), Some (Eid.unique (), A.Value (GTy.mk Rstt.Cenums.void)))
+    | CoerceNarrow (SEXP, e) ->
+        (* An R value ([r_obj*], which [PAst] resolves to [SEXP]) is never
+           untyped memory: the intersecting cast alone. The type tests below
+           would split a value whose type has a variable ('a, e.g. what vctrs'
+           [vec_c] returns), and the coercion would then replace 'a by
+           [any_sexp] in the union of the branches, so that a later
+           [INTEGER(x)] could no longer require 'a to be [INT]. *)
+        A.TypeCast (aux_e e, GTy.mk (content_type SEXP), SA.NoCheck)
     | CoerceNarrow (ty, e) ->
         (* [let x = e in if x : NULL then x
                         else if x : T \ NULL then cast(x, T) else coerce(x, T)].
