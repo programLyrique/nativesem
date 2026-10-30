@@ -12,7 +12,7 @@ and_ptr: ([c_int_na \ c_false, *c_int_na \ c_null] -> c_true) & ([c_false, *c_in
 
 or_ptr: ([c_null, c_null] -> c_false) & ([*c_int_na \ c_null, *c_int_na] | [c_null, *c_int_na \ c_null] -> c_true)
 
-guarded: ∀'a. ([*(c(1..) & 'a) \ c_null] -> 'a) & ([*(c_int_na \ c(1..)) \ c_null] | [c_null] -> c_false)
+guarded: ∀'a. ([*(c(1..) & 'a) \ c_null] -> 'a) & ([*(c_int_na \ c(1..) & 'a) \ c_null] | [c_null] -> c_false)
 
-guarded_or: ∀'a. ([*(c_int_na \ c_false & 'a) \ c_null] -> 'a) & ([*c_false \ c_null] | [c_null] -> c_false)
+guarded_or: ∀'a. ([*(c_int_na \ c_false & 'a) \ c_null] -> 'a) & ([*(c_false & 'a) \ c_null] | [c_null] -> c_false)
 

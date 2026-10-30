@@ -1,4 +1,4 @@
-first_na_or_all: ∀'a,'b,'c. ([(CHR & v('b) & v('c)) & 'a] -> null | 'a & (CHR & v('b) & v('c) | null)) & ([(CHR1 & v1('b) & v1('c)) & 'a] -> null | 'a & (CHR1 & v1('b) & v1('c) | null)) & (['a & ((clx & v('b) | (~vec)<...>) | null | sym)] -> empty)
+first_na_or_all: ∀'a,'b. ([(CHR & v('b)) & 'a] -> null | 'a & (CHR & v('b) | null)) & ([(CHR1 & v1('b)) & 'a] -> null | 'a & (CHR1 & v1('b) | null)) & (['a & ((clx & v('b) | (~vec)<...>) | null | sym)] -> empty)
 
 count_down: ∀'a. ([vec1 & 'a] -> vec1 & 'a) & (['a & ((list | vec) | p(CHR))] -> 'a & ((list | vec) | p(CHR)))
 
