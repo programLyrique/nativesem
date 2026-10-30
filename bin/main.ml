@@ -97,6 +97,18 @@ let fallback_c_sig_opt =
   in
   Arg.(value & flag & info ["fallback-c-signature"] ~doc)
 
+let fallback_mode_opt =
+  let doc =
+    "Which functions $(b,--fallback-c-signature) applies to: $(b,all) of them \
+     (the default), $(b,except-all-sexp) (not those whose parameters and \
+     result are all SEXP: their signature only says that they take and return \
+     R values), or $(b,none). Implies $(b,--fallback-c-signature), but for \
+     $(b,none)."
+  in
+  let modes = [ "all", Some Runner.All ; "except-all-sexp", Some Runner.Except_all_sexp ;
+                "none", None ] in
+  Arg.(value & opt (some (enum modes)) None & info ["fallback-mode"] ~docv:"MODE" ~doc)
+
 let call_graph_opt =
   let doc =
     "Write the call graph (after entry-point reachability filtering) in \
@@ -157,11 +169,17 @@ let cmd =
      and+ include_dirs = include_dir_opt
      and+ timeout = timeout_opt
      and+ fallback_c_signature = fallback_c_sig_opt
+     and+ fallback_mode = fallback_mode_opt
      and+ call_graph = call_graph_opt
      and+ log_times = log_times_opt
      and+ lambda_rec = lambda_rec_opt
      and+ mlsem_recording = mlsem_recording_opt
     and+ path = path_arg in
+    let fallback_c_signature =
+      match fallback_mode with
+      | Some None -> false
+      | Some (Some m) -> Runner.fallback_mode := m ; true
+      | None -> fallback_c_signature in
     PEnv.sequential_handler Defs.parsed_types_penv (fun path -> main ~mlsem_recording {cst; past; ast; mlsem ; typing = not no_typing ; debug ; filter; timeout; fallback_c_signature; call_graph; log_times; lambda_rec} include_dirs path) path |> fst)
      
 

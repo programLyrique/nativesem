@@ -83,7 +83,8 @@ type cmd_options = {
      the function at its declared C signature ([ret_ty params -> ret_ty]) so
      callers can still be typed instead of cascading "unbound variable". The
      original error is still printed; the fallback is additionally reported on
-     a [fallback:] line. Off by default. *)
+     a [fallback:] line. Off by default. Which functions it applies to is
+     [fallback_mode]. *)
   fallback_c_signature : bool;
   (* When [Some path], dump the call graph (after [keep_reachable]) in
      Graphviz .dot format to [path]. Cycles are colored, files clustered,
@@ -239,6 +240,28 @@ let with_inference_timeout timeout thunk =
    environments unchanged if the signature cannot be built. Shared by
    [infer_ast] (inference failed) and [bind_c_signature] (an embedder's own
    time limit fired). *)
+(* Which functions [fallback_c_signature] may bind at their declared C
+   signature. [Except_all_sexp] leaves out those whose parameters and result
+   are all [SEXP]: their signature, [any_sexp] to [any_sexp], says no more
+   than that they take and return R values, and binding them would count as
+   typed a function about which nothing was proved. A signature with a C
+   type keeps it: that part is exact. A global, like [on_outcome], so that an
+   embedder (TypR) sets it without a new field in [cmd_options]. *)
+type fallback_mode = All | Except_all_sexp
+let fallback_mode = ref All
+
+let all_sexp_signature decl ret_ty params =
+  let resolve = PAst.resolve_ctype decl in
+  resolve ret_ty = Ast.SEXP
+  && List.for_all (function
+       | PAst.Param (ty, _) -> (match resolve ty with Ast.SEXP | Ast.Void -> true | _ -> false)
+       | PAst.Vararg -> false) params
+
+let fallback_allowed decl ret_ty params =
+  match !fallback_mode with
+  | All -> true
+  | Except_all_sexp -> not (all_sexp_signature decl ret_ty params)
+
 let bind_fallback ~report visible (idenv, env, decl) key v compute =
   try
     let ty = compute () in
@@ -705,6 +728,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         match past with
         | _, PAst.Fundef (ret_ty, name, params, _)
           when recursive && opts.fallback_c_signature
+               && fallback_allowed decl ret_ty params
                && not (Idenv.mem (id name) idenv) ->
             bind_fallback ~report:(fun _ -> ()) false (idenv, env, decl) (id name)
               (MVariable.create MVariable.Immut (Some name))
@@ -720,7 +744,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
       let fallback =
         if opts.fallback_c_signature then
           match past with
-          | _, PAst.Fundef (ret_ty, _, params, _) ->
+          | _, PAst.Fundef (ret_ty, _, params, _) when fallback_allowed decl ret_ty params ->
               Some (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
           | _, PAst.MacroDef (_, params, _) ->
               Some (fun () -> C_interface.infer_cfun ~typedef_map:decl Ast.Any params)
@@ -753,6 +777,7 @@ let bind_c_signature visible (idenv, env, decl) past =
   match past with
   | _, (PAst.Fundef (_, name, params, _) | PAst.MacroDef (name, params, _)) ->
       let ret_ty = match past with _, PAst.Fundef (ret_ty, _, _, _) -> ret_ty | _ -> Ast.Any in
+      if not (fallback_allowed decl ret_ty params) then (idenv, env, decl) else
       let v = MVariable.create MVariable.Immut (Some name) in
       let report o = if visible then !on_outcome ~name ~elapsed:0. o in
       bind_fallback ~report visible (idenv, env, decl) (binding_name past) v
