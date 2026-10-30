@@ -442,6 +442,8 @@ let infer_ast ?fallback ?completion ?alternative ~key visible opts (idenv, env, 
          and similar internal invariants. Treat as untypeable so the function
          is reported by name and the rest of the package still gets processed. *)
       if visible then Format.printf "%s:@.untypeable: invalid mlsem AST: %s@." name msg;
+      if opts.debug then
+        Format.eprintf "%s@." (Printexc.get_backtrace ()) ;
       log_timing ();
       report (Internal (Printf.sprintf "invalid mlsem AST: %s" msg)) ;
       apply_fallback ()
