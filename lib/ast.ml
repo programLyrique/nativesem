@@ -532,7 +532,7 @@ let rec aux_e (eid, _decl, vars, e) =
     match c with
     | Call ((_,_,_, Id f), [v_arg; (_,_,_, Const (CStr name))])
         when is_rfun "inherits" f ->
-        Some (aux_e v_arg, GTy.mk (Defs.inherits_test_ty name), negated)
+        Some (aux_e v_arg, Defs.inherits_test_ty name, negated)
     | _ -> None
   in
   let rec aux e =
@@ -695,7 +695,7 @@ let rec aux_e (eid, _decl, vars, e) =
          | None ->
              let cond = aux_e cond in
              let cond = (Eid.unique (), (A.App ((Eid.unique (), A.Var Defs.tobool), cond))) in
-             A.If (cond, GTy.mk Rstt.Cint.tt, aux_e then_, Option.map aux_e else_))
+             A.If (cond, Rstt.Cint.tt, aux_e then_, Option.map aux_e else_))
     | Ite (cond, then_, else_) ->
         (match inherits_typecase cond with
          | Some (scrut, tau, false) ->
@@ -705,11 +705,11 @@ let rec aux_e (eid, _decl, vars, e) =
          | None ->
              let cond = aux_e cond in
              let cond = (Eid.unique (), (A.App ((Eid.unique (), A.Var Defs.tobool), cond))) in
-             A.Ite (cond, GTy.mk Rstt.Cint.tt, aux_e then_, aux_e else_))
+             A.Ite (cond, Rstt.Cint.tt, aux_e then_, aux_e else_))
     | While (cond, body) -> 
         let cond = aux_e cond in
         let cond = (Eid.unique (), (A.App ((Eid.unique (), A.Var Defs.tobool), cond))) in
-        A.While (cond, GTy.mk Rstt.Cint.tt, aux_e body)
+        A.While (cond, Rstt.Cint.tt, aux_e body)
     | Seq (e1,e2) -> A.Seq (aux_e e1, aux_e e2)
     | Return e -> A.Return (match e with 
         | None -> (Eid.unique (), A.Void)
@@ -718,7 +718,7 @@ let rec aux_e (eid, _decl, vars, e) =
         let e = aux_e e in 
         let tt = Eid.unique (), A.Value (GTy.mk Rstt.Cint.tt) in
         let ff = Eid.unique (), A.Value (GTy.mk Rstt.Cint.ff) in
-        A.Ite (e, GTy.mk ty, tt, ff)
+        A.Ite (e, ty, tt, ff)
     | Cast (ty, e) -> let e = aux_e e in
         A.TypeCoerce (e, typeof_ctype ty |> GTy.mk , SA.NoCheck)
     | LabelBlock (l, e) ->
@@ -763,14 +763,14 @@ let rec aux_e (eid, _decl, vars, e) =
         let replaced = (branch_id (), A.TypeCoerce (var (), GTy.mk target, SA.NoCheck)) in
         narrowings := { narrowed = fst narrowed ; replaced = fst replaced ;
                         at = Eid.loc src_eid ; target = ty } :: !narrowings ;
-        let non_null = GTy.mk (Ty.diff target Rstt.Cptr.null) in
+        let non_null = Ty.diff target Rstt.Cptr.null in
         let not_null = (Eid.unique (), A.Ite (var (), non_null, narrowed, replaced)) in
         (* Only a declared type that can be [NULL] keeps it: [r_obj*], an R
            value, cannot, and a value of type [any] (or a type variable) would
            otherwise bring a [NULL] part along. *)
         let body =
           if Ty.leq (Ty.cap target Rstt.Cptr.null) Ty.empty then not_null
-          else (Eid.unique (), A.Ite (var (), GTy.mk Rstt.Cptr.null, var (), not_null))
+          else (Eid.unique (), A.Ite (var (), Rstt.Cptr.null, var (), not_null))
         in
         A.Let ([], x, aux_e e, body)
     | AnyValue ty -> A.Value (GTy.mk (content_type ty))
