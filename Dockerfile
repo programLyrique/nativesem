@@ -25,7 +25,7 @@ RUN opam update --yes && eval $(opam env) && \
 # lib/defs.ml are written against it. Keep in sync with .github/workflows/ci.yml.
 ARG SSTT_REF=d295f27f4aa023c20b6c5b8971151e5b61cb1863
 ARG MLSEM_REF=f40401b5ef76a97191dac0994dddf06fd07ff1e4
-ARG RSTT_REF=9ac5ea352b1ad9acf89fe388f8682c21ac9b8179
+ARG RSTT_REF=6c102e035cacdea1d31a0f5bcaa7ccf353799c73
 
 # sstt, MLsem, and RSTT are now public — no PAT needed.
 RUN eval $(opam env) && \

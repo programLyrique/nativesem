@@ -88,7 +88,7 @@ let getAttrib_class_ty v_ty =
   try
     let classes_ty = Attr.proj_classes v_ty in
     match Classes.destruct classes_ty with
-    | { pos; neg = []; unk = []; tail = NoOther } when pos <> [] ->
+    | { pos; neg = []; unk = []; tail = Tail (AbsentOr, []) } when pos <> [] ->
       let names = List.map (fun (Classes.L (s, _)) -> s) pos in
       Attr.mk_content (chr_vec_of_names names)
     | _ -> fallback
@@ -98,7 +98,7 @@ let getAttrib_class_ty v_ty =
    directly against [inherits_test_ty name]: the set of attr-tagged values whose
    class set includes [name] (other class labels left [Unknown], i.e. they may
    or may not be present -- [inherits] only asserts membership, not the exact
-   class set; [AllOthers] would be wrong as it asserts every other class is
+   class set; [Tail (PresentOr, [])] would be wrong as it asserts every other class is
    present, a near-empty type). mlsem's occurrence typing then refines [x] in
    both branches: the then-branch to [x & <name, ...>], the else-branch to
    [x \ <name, ...>] (which keeps e.g. the [p(CHR)] CHARSXP half of [any_sexp],
@@ -124,7 +124,7 @@ let inherits_test_ty name =
    [val] is a chr vector whose element type is a positive, finite set of string
    singletons (e.g. [mkString "foo"], typed [(c_string('a)) --> v1(^CHR('a))]
    in base.ty, or a variable holding such a value — the type flows through let
-   bindings) we set exactly those classes ([tail = NoOther]). Otherwise the
+   bindings) we set exactly those classes ([tail = Tail (AbsentOr, [])]). Otherwise the
    concrete names are unknown and we fall back to [Classes.any], i.e. arbitrary
    classes. Only a *scalar* vector can carry string singletons in the current
    type algebra, so in practice this recovers the single-class case; the
@@ -164,7 +164,7 @@ let setAttrib_class_classes val_ty =
   | Some names ->
     Classes.mk
       { pos = List.map (fun n -> Classes.L (n, [])) names;
-        neg = []; unk = []; tail = Classes.NoOther }
+        neg = []; unk = []; tail = Classes.Tail (AbsentOr, []) }
   | None -> Classes.any
 
 (* Domain of the [setAttrib(_, R_ClassSymbol, _)] constructor: the value being
@@ -408,7 +408,7 @@ let setAttrib_class_cons_known names tys =
       | [] -> Classes.any
       | ns ->
         Classes.mk { pos = List.map (fun n -> Classes.L (n, [])) ns;
-                     neg = []; unk = []; tail = Classes.NoOther }
+                     neg = []; unk = []; tail = Classes.Tail (AbsentOr, []) }
     in
     Attr.mk { content; classes; attrs }
   | _ -> assert false
