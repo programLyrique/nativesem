@@ -82,7 +82,13 @@ let add_struct_guards t =
    [Ast.typeof_ctype]). Unlike an alias, it is neither printed nor bound. *)
 let typedefs : (string, Sstt.Ty.t) Hashtbl.t = Hashtbl.create 32
 
+(* Types mentioning a class can only be built once the class lattice is
+   frozen. NativeSem declares no relation between classes, so it freezes it
+   before building its types: any class then stands on its own, and
+   class-overloads (Rsem's method classes) can no longer be declared in the
+   same process. *)
 let build_types ti_map env type_list = 
+  Classes.build_lattice () ;
   List.fold_left (fun acc (sym, ty, kind) ->
     let open Builder in 
    
