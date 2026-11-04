@@ -540,3 +540,14 @@
  (deps    cprogs/const-comparison.c cprogs/const-comparison.expected)
  (action  (diff cprogs/const-comparison.expected const-comparison.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/fortran-names.c)
+ (action  (with-stdout-to fortran-names.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/fortran-names.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/fortran-names.c cprogs/fortran-names.expected)
+ (action  (diff cprogs/fortran-names.expected fortran-names.output)))
+

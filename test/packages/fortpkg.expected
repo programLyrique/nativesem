@@ -10,6 +10,8 @@ Entry points for .Fortran convention:
 
 .C(scale_): [DBL, INT, DBL, LGL] --> c_void
 
+.C(count_): [DBL, INT | LGL, INT | LGL] --> c_void
+
 cmplx_:
 untypeable: Unsupported registered argument type for the .C interface: CPLXSXP.
 

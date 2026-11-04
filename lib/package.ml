@@ -386,7 +386,7 @@ let find_native_calls path =
               (* Create regex patterns for .C, .Call, .Fortran, .External. *)
               let extract_calls pattern_name convention =
                 let pattern = Str.regexp
-                  ("\\." ^ pattern_name ^ "[ \t]*([ \t]*\"?\\([a-zA-Z0-9_]+\\)")
+                  ("\\." ^ pattern_name ^ "[ \t]*([ \t\n]*\"?\\([a-zA-Z0-9_.]+\\)")
                 in
                 let rec find_all pos acc =
                   try

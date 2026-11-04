@@ -258,6 +258,13 @@ let aux_primitive_type t =
 
 let token_to_string (_loc, s) = s
 
+(* R's [F77_SUB(x)], [F77_NAME(x)] and [F77_CALL(x)] (R_ext/RS.h) all name
+   the symbol [x_] of the Fortran subroutine [x], in prototypes as
+   [void F77_SUB(x)(double *a)] and in calls as [F77_CALL(x)(a)]. They are
+   built in, as the R headers defining them are not always found. *)
+let fortran_name_macros = [ "F77_SUB" ; "F77_NAME" ; "F77_CALL" ]
+let fortran_symbol x = x ^ "_"
+
 type init_step =
   | InitIndex of A.e
   | InitField of string
@@ -588,6 +595,10 @@ and aux_type_descriptor (type_desc: type_descriptor) : Ast.ctype =
 and aux_decl_name (decl : declarator) : int * string =
   match decl with
   | `Id tok -> (0, token_to_string tok)
+  | `Func_decl (`Id (_, m),
+               (_, `Opt_choice_param_decl_rep_COMMA_choice_param_decl
+                  (Some (`Param_decl ((_, `Id (_, x), _), None, _), [])), _), _, _)
+    when List.mem m fortran_name_macros -> (0, fortran_symbol x)
   | `Func_decl (decl, _, _, _) ->  aux_decl_name decl
   | `Poin_decl (_,_,_,_,decl) -> let (level, name) = aux_decl_name decl in (level + 1, name)
   (* Array just adds a pointer indirection currently. We could also create an array type for the C side*)
@@ -1103,15 +1114,17 @@ and aux_call_expression (call: call_expression) =
   let pos1,_ = func_ast in 
   let pos2, args_ast = aux_argument_list args in
   let pos = Position.join pos1 pos2 in
-  match expr with
-  | `Choice_cond_exp (`Id (_, name)) when Preprocessor.is_function_macro name ->
+  match expr, args_ast with
+  | `Choice_cond_exp (`Id (_, m)), [ (_, A.Id x) ] when List.mem m fortran_name_macros ->
+      (pos, A.Id (fortran_symbol x))
+  | `Choice_cond_exp (`Id (_, name)), _ when Preprocessor.is_function_macro name ->
       (* [NAME(...)] with [NAME] a function-like macro: an expansion. A
          parenthesized callee [(NAME)(...)] is a [Paren_exp], hence a call of
          the variable or function [NAME], as in C. *)
       (match Preprocessor.expand_macro name args_ast with
        | Some expansion -> expansion
        | None -> (pos, A.MacroCall (name, args_ast)))
-  | _ -> (pos, A.Call (func_ast, args_ast))
+  | _, _ -> (pos, A.Call (func_ast, args_ast))
 and aux_argument (arg: anon_choice_exp_f079e30) =
   match arg with 
   | `Exp e -> aux_expression e

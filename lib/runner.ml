@@ -503,7 +503,7 @@ let binding_name = function
   | _, PAst.MacroDef (name, _, _) -> PAst.Name.Macro name
   | past -> id (PAst.top_level_unit_name past)
 
-let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=false) ?(convention=None) ?(skip_if_defined=false) visible_name opts (idenv, env, decl)  past =
+let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=false) ?(convention=None) ?arg_types ?(skip_if_defined=false) visible_name opts (idenv, env, decl)  past =
   let name = PAst.top_level_unit_name past in
   let visible = visible_name name in
   let started = Unix.gettimeofday () in
@@ -616,9 +616,15 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         report name (Typed { header = `Default ; var = v ; tys }) ;
         (Idenv.add (id name) v idenv, env, decl)
       end
-  | _,PAst.Fundef (ret_ty, name, params, _) when convention=Some(Package.C) ->
+  | _,PAst.Fundef (ret_ty, name, params, _) when convention=Some(Package.C) || convention=Some(Package.Fortran) ->
     (try
-      let ty = C_interface.infer_dotC ~typedef_map:decl ret_ty params |> GTy.mk |> TyScheme.mk_mono in
+      (* Registered with the types of its arguments ([arg_types]), the routine
+         is called with exactly those (cf. [C_interface.dotC_of_arg_types]). *)
+      let ty =
+        (match arg_types with
+         | Some arg_types -> C_interface.dotC_of_arg_types arg_types
+         | None -> C_interface.infer_dotC ~typedef_map:decl ret_ty params)
+        |> GTy.mk |> TyScheme.mk_mono in
       if has_ty_binding name then begin
         (match find_existing_binding name idenv env with
          | Some (v, tys) ->
@@ -842,7 +848,7 @@ let parse_files opts filenames =
 
 (** Type the already-parsed translation units [pasts] (a [(filename, past)]
     list, as returned by [parse_files]). *)
-let run_on_pasts opts pasts ?entry_points idenv env =
+let run_on_pasts opts pasts ?entry_points ?(registered = []) idenv env =
   let t_callgraph_start = Unix.gettimeofday () in
   let full_call_graph = Call_graph.of_past_list (List.map snd pasts) in
   let entry_names = match entry_points with
@@ -850,8 +856,7 @@ let run_on_pasts opts pasts ?entry_points idenv env =
     | Some entries ->
       entries |> List.filter_map (fun (func_name, convention) ->
         match convention with
-        | Package.Call | Package.C | Package.External -> Some func_name
-        | _ -> None)
+        | Package.Call | Package.C | Package.Fortran | Package.External -> Some func_name)
   in
   let filter_roots =
     match opts.filter with
@@ -1027,7 +1032,11 @@ let run_on_pasts opts pasts ?entry_points idenv env =
   let idenv, env, _ =
     List.fold_left
       (fun (idenv, env, decl) (filename, item) ->
-        let convention = StrMap.find_opt (PAst.top_level_unit_name item) entry_points in
+        let name = PAst.top_level_unit_name item in
+        let convention = StrMap.find_opt name entry_points in
+        let arg_types =
+          List.find_map (fun (r : Package.registered) ->
+              if r.c_name = name then r.arg_types else None) registered in
         let file_idenv =
           StrMap.find_opt filename internal_idenvs
           |> Option.value ~default:Idenv.empty
@@ -1036,7 +1045,7 @@ let run_on_pasts opts pasts ?entry_points idenv env =
           Idenv.union (fun _ local _global -> Some local) file_idenv idenv
         in
         let idenv', env, decl =
-          infer_def ~internal_scope:filename ~convention visible_name opts
+          infer_def ~internal_scope:filename ~convention ?arg_types visible_name opts
             (idenv_for_file, env, decl) item
         in
         let idenv =
@@ -1054,13 +1063,14 @@ let run_on_pasts opts pasts ?entry_points idenv env =
       (Unix.gettimeofday () -. t_fundef_start);
   (idenv, env)
 
-let run_on_files opts filenames ?entry_points idenv env =
-  run_on_pasts opts (parse_files opts filenames) ?entry_points idenv env
+let run_on_files opts filenames ?entry_points ?registered idenv env =
+  run_on_pasts opts (parse_files opts filenames) ?entry_points ?registered idenv env
 
 
 (** Bind the [.C]/[.Fortran] routines registered with the types of their
-    arguments that the sources left unbound, such as Fortran subroutines, at
-    the type their types array gives (cf. [C_interface.dotC_of_arg_types]). *)
+    arguments that the sources left unbound, such as Fortran subroutines with
+    no C prototype, at the type their types array gives (cf.
+    [C_interface.dotC_of_arg_types]). *)
 let bind_registered visible_name registered (idenv, env) =
   List.fold_left (fun (idenv, env) (r : Package.registered) ->
     match r.convention, r.arg_types with
@@ -1132,8 +1142,9 @@ let run_on_package opts path idenv env =
     List.iter (fun entry -> Format.printf "  %s@." entry) fortran_entry_points;
     Format.printf "@."
   end;
-  run_on_files opts c_files ~entry_points idenv env
-  |> bind_registered (make_substring_pred opts.filter) (Package.registered_routines path)
+  let registered = Package.registered_routines path in
+  run_on_files opts c_files ~entry_points ~registered idenv env
+  |> bind_registered (make_substring_pred opts.filter) registered
   
 (* Solutions produced by tallying may assign a type variable a primitive
    component that is not "whole" (e.g. [INT \ 42L]). Such a component cannot be
