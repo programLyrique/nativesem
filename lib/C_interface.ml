@@ -106,6 +106,27 @@ let infer_dotC ?(typedef_map = Ast.DeclMap.empty) ret_ty params =
   Arrow.mk arg_tuple Rstt.Cenums.void
 
 
+(* The type of a [.C]/[.Fortran] routine registered with the types of its
+   arguments ([R_NativePrimitiveArgType]), whatever its C signature, if any:
+   a Fortran subroutine has none. R checks that each argument has exactly its
+   registered type, so unlike for an [int*] parameter (cf. [dotC_typeof]),
+   [INTSXP] does not admit a logical vector. *)
+let dotC_of_arg_types arg_types =
+  let open Rstt in
+  let vec p = Vec.Vector (Prim.mk p) |> Vec.mk |> Attr.mk_content in
+  let arg = function
+    | Package.Real -> vec Prim.Dbl.any
+    | Package.Integer -> vec Prim.Int.any
+    | Package.Logical -> vec Prim.Lgl.any
+    | Package.String -> vec Prim.Chr.any
+    | Package.Raw -> vec Prim.Raw.any
+    | t -> failwith (Printf.sprintf
+                       "Unsupported registered argument type for the .C interface: %s."
+                       (Package.string_of_native_arg_type t))
+  in
+  Arrow.mk (Tuple.mk (List.map arg arg_types)) Rstt.Cenums.void
+
+
 let infer_dotC_from_past ?(typedef_map = Ast.DeclMap.empty) = function
   | _, Fundef (ret_ty, _, params, _) -> infer_dotC ~typedef_map ret_ty params
   | _ -> failwith "Expected a function definition."
@@ -243,6 +264,16 @@ let%test "infer_dotC resolves typedef aliases for supported pointer arguments" =
        [Param (Ast.Typeref "int_ptr_t", "ints"); Param (Ast.Typeref "char_ptr_ptr_t", "names")])
     (infer_dotC Ast.Void [Param (Ast.Ptr Ast.Int, "ints"); Param (Ast.Ptr (Ast.Ptr Ast.Char), "names")])
 
+
+let%test "dotC_of_arg_types distinguishes integer and logical vectors" =
+  let open Rstt in
+  let vec p = Vec.Vector (Prim.mk p) |> Vec.mk |> Attr.mk_content in
+  Ty.equiv
+    (dotC_of_arg_types [Package.Integer ; Package.Logical ; Package.Real])
+    (Arrow.mk (Tuple.mk [vec Prim.Int.any ; vec Prim.Lgl.any ; vec Prim.Dbl.any]) Rstt.Cenums.void)
+  && not (Ty.equiv
+            (dotC_of_arg_types [Package.Integer])
+            (infer_dotC Ast.Void [Param (Ast.Ptr Ast.Int, "n")]))
 
 let%test "infer_dotC_from_past rejects non-function top-level items" =
   match infer_dotC_failure (Mlsem.Common.Position.dummy, GlobalVar (Extern, "g", Ast.Int)) with

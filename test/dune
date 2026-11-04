@@ -44,6 +44,23 @@
  (action
   (diff packages/dup-globals.expected dup-globals.output)))
 
+;; Fortran routines, registered with the types of their arguments.
+(rule
+ (alias runtest)
+ (deps
+  (glob_files ../types/*.ty)
+  (source_tree packages/fortpkg))
+ (action
+  (with-stdout-to
+   fortpkg.output
+   (run %{exe:package_test.exe} packages/fortpkg))))
+
+(rule
+ (alias runtest)
+ (deps packages/fortpkg.expected fortpkg.output)
+ (action
+  (diff packages/fortpkg.expected fortpkg.output)))
+
 ; Typed with --fallback-c-signature, which recursion relies on.
 (rule
  (alias runtest)

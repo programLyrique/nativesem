@@ -1,0 +1,15 @@
+Entry points detected: Call=0, C=0, Fortran=3, External=0
+Entry points for .Call convention:
+
+Entry points for .C convention:
+
+Entry points for .Fortran convention:
+  scale_
+  count_
+  cmplx_
+
+.C(scale_): [DBL, INT, DBL, LGL] --> c_void
+
+cmplx_:
+untypeable: Unsupported registered argument type for the .C interface: CPLXSXP.
+

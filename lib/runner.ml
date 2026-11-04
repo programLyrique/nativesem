@@ -1058,6 +1058,31 @@ let run_on_files opts filenames ?entry_points idenv env =
   run_on_pasts opts (parse_files opts filenames) ?entry_points idenv env
 
 
+(** Bind the [.C]/[.Fortran] routines registered with the types of their
+    arguments that the sources left unbound, such as Fortran subroutines, at
+    the type their types array gives (cf. [C_interface.dotC_of_arg_types]). *)
+let bind_registered visible_name registered (idenv, env) =
+  List.fold_left (fun (idenv, env) (r : Package.registered) ->
+    match r.convention, r.arg_types with
+    | (Package.C | Package.Fortran), Some arg_types
+      when not (Idenv.mem (id r.c_name) idenv) ->
+      let name = r.c_name in
+      let visible = visible_name name in
+      let report o = if visible then !on_outcome ~name ~elapsed:0. o in
+      (match C_interface.dotC_of_arg_types arg_types with
+       | ty ->
+         let tys = ty |> GTy.mk |> TyScheme.mk_mono in
+         let v = MVariable.create Immut (Some name) in
+         print_visible `DotC visible v tys ;
+         report (Typed { header = `DotC ; var = v ; tys }) ;
+         (Idenv.add (id name) v idenv, Env.add v tys env)
+       | exception Failure msg ->
+         if visible then Format.printf "%s:@.untypeable: %s@.@." name msg ;
+         report (Untypeable { title = msg ; descr = None }) ;
+         (idenv, env))
+    | _ -> (idenv, env))
+    (idenv, env) registered
+
 let run_on_package opts path idenv env =
   let entry_points = Package.find_native_calls path in
   if opts.debug then begin
@@ -1084,6 +1109,7 @@ let run_on_package opts path idenv env =
   ) in
   let call_entry_points = entry_points_for Package.Call in
   let c_entry_points    = entry_points_for Package.C in
+  let fortran_entry_points = entry_points_for Package.Fortran in
   (* Count entry points by calling convention *)
   let count_convention conv =
     List.length (List.filter (fun (_, c) -> c = conv) entry_points)
@@ -1101,7 +1127,13 @@ let run_on_package opts path idenv env =
   Format.printf "Entry points for .C convention:@.";
   List.iter (fun entry -> Format.printf "  %s@." entry) c_entry_points;
   Format.printf "@.";
+  if fortran_entry_points <> [] then begin
+    Format.printf "Entry points for .Fortran convention:@.";
+    List.iter (fun entry -> Format.printf "  %s@." entry) fortran_entry_points;
+    Format.printf "@."
+  end;
   run_on_files opts c_files ~entry_points idenv env
+  |> bind_registered (make_substring_pred opts.filter) (Package.registered_routines path)
   
 (* Solutions produced by tallying may assign a type variable a primitive
    component that is not "whole" (e.g. [INT \ 42L]). Such a component cannot be

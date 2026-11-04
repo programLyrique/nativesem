@@ -1,0 +1,5 @@
+Package: fortpkg
+Version: 0.1
+Title: Fortran Routines Registered with Their Argument Types
+Description: Test package for the .Fortran and .C registration tables.
+License: GPL-2
