@@ -289,7 +289,10 @@ R_ReleaseObject: [any_sexp] --> c_void
 ++__1: ([c_int] --> c_int) & ([c_int_na] --> c_int_na) & ([c_double] --> c_double) & ([*'a] --> *'a) & ([c_string] --> c_string)
 --__1: ([c_int] --> c_int) & ([c_int_na] --> c_int_na) & ([c_double] --> c_double) & ([*'a] --> *'a) & ([c_string] --> c_string)
 
-*__1: ([*'a] --> 'a) & ([c_string] --> c_char) // rather ([*'a \ c_null] -> 'a) & ([c_string] -> c_char) but would require dyn for the c_null overload to be added
+// Dereferencing NULL is undefined behaviour (C11 6.5.3.2p4): an error, as
+// indexing NULL is in []. A pointer that may be NULL still dereferences to 'a,
+// its non-null part; one that is NULL does not return.
+*__1: ([*'a] --> 'a) & ([c_string] --> c_char) & ([c_null] --> empty)
 &__1: ['a] --> *'a
 
 -__1: ([c_int] --> c_int) & ([c_double] --> c_double) & ([any, any] --> any) & ([c_int_na] --> c_int_na)
