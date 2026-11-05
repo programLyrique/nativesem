@@ -88,8 +88,9 @@ let getAttrib_class_ty v_ty =
   try
     let classes_ty = Attr.proj_classes v_ty in
     match Classes.destruct classes_ty with
-    | { pos; neg = []; unk = []; tail = Tail (AbsentOr, []) } when pos <> [] ->
-      let names = List.map (fun (Classes.L (s, _)) -> s) pos in
+    | { pos; neg = []; unk = []; tail = Tail (AbsentOr, []) }
+      when pos <> [] && List.for_all (function Classes.L (Class _, _) -> true | _ -> false) pos ->
+      let names = List.map (function Classes.L (Class s, _) -> s | _ -> assert false) pos in
       Attr.mk_content (chr_vec_of_names names)
     | _ -> fallback
   with _ -> fallback
@@ -111,7 +112,7 @@ let getAttrib_class_ty v_ty =
 let inherits_test_ty name =
   let open Rstt in
   let classes =
-    Classes.mk { pos = [Classes.L (name, [])]; neg = []; unk = []; tail = Classes.Unknown }
+    Classes.mk { pos = [Classes.L (Class name, [])]; neg = []; unk = []; tail = Classes.Unknown }
   in
   Attr.mk { content = Attr.proj_content Attr.any; classes ; attrs = Lst.any }
 
@@ -163,7 +164,7 @@ let setAttrib_class_classes val_ty =
   match names_opt with
   | Some names ->
     Classes.mk
-      { pos = List.map (fun n -> Classes.L (n, [])) names;
+      { pos = List.map (fun n -> Classes.L (Class n, [])) names;
         neg = []; unk = []; tail = Classes.Tail (AbsentOr, []) }
   | None -> Classes.any
 
@@ -407,7 +408,7 @@ let setAttrib_class_cons_known names tys =
       match List.filter (fun s -> s <> "") names with
       | [] -> Classes.any
       | ns ->
-        Classes.mk { pos = List.map (fun n -> Classes.L (n, [])) ns;
+        Classes.mk { pos = List.map (fun n -> Classes.L (Class n, [])) ns;
                      neg = []; unk = []; tail = Classes.Tail (AbsentOr, []) }
     in
     Attr.mk { content; classes; attrs }
