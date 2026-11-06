@@ -1,0 +1,18 @@
+check_eq: ([externalptr \ externalptr(empty)] -> null) & ([externalptr(empty)] -> empty)
+
+check_not: ([externalptr \ externalptr(empty)] -> null) & ([externalptr(empty)] -> empty)
+
+unchecked: ∀'a. ([externalptr(c_int & c_int_na('a)) \ externalptr(empty)] -> ^INT1('a)) & ([externalptr(c_int_na \ c_int | c_int_na & c_int_na('a)) \ externalptr(empty)] -> INT1('a)) & ([externalptr(empty)] -> empty) & ([externalptr(~c_int_na) \ externalptr(empty)] -> INT1)
+
+call_check: ([externalptr \ externalptr(empty)] -> null) & ([externalptr(empty)] -> empty)
+
+call_null: [any_sexp] -> empty
+
+call_int: [INT] -> null
+
+make_str: [any_sexp] -> externalptr(c("abc"), null) \ externalptr(empty)
+
+roundtrip_str: [any_sexp] -> "abc"
+
+roundtrip_int: ([INT] -> INT1) & ([^INT1] -> ^INT1)
+

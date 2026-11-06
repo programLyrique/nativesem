@@ -189,7 +189,7 @@ R_GetBindingType: [sym, env] --> c_int
 
 // R API: external pointers (extended)
 R_ClearExternalPtr: [externalptr] --> c_void
-R_SetExternalPtrAddr: [externalptr, *any] --> c_void
+R_SetExternalPtrAddr: [externalptr, c_ptr] --> c_void
 // The tag of an external pointer is part of its type: externalptr(TARGET, TAG).
 R_ExternalPtrTag: [externalptr(any, 'b)] --> any_sexp & 'b
 // Changes the tag in place: PAst rebinds the pointer variable to the result.
@@ -453,9 +453,13 @@ isFactor: ([v(INT) <factor, ...>] --> c_true) & ([any_sexp \ (v(INT) <factor, ..
 isObject: ([attr \ <>] --> c_true) & ([any_sexp \ (attr \ <>)] --> c_false)
 isFrame: ([<data.frame, ...>] --> c_true) & ([any_sexp \ <data.frame, ...>] --> c_false)
 
-// External pointers 
-R_ExternalPtrAddr: ([externalptr('a)] --> *'a) & ([externalptr(empty)] --> c_null)
-R_MakeExternalPtr: ([*'a, any_sexp & 'b, any_sexp] --> externalptr('a, 'b)) & ([c_null, any_sexp & 'b, any_sexp] --> externalptr(empty, 'b))
+// External pointers. The target of an external pointer is that of the C
+// pointer it holds, C strings included: c_ptr('a), not *'a, which excludes
+// them (a char* stored in an external pointer would otherwise come back as
+// c_null). Both may be null: externalptr(empty) holds c_null = c_ptr(empty).
+// A pointer that is not null stays so through both.
+R_ExternalPtrAddr: ([externalptr('a)] --> c_ptr('a)) & ([externalptr('a) \ externalptr(empty)] --> c_ptr('a) \ c_null) & ([externalptr(empty)] --> c_null)
+R_MakeExternalPtr: ([c_ptr('a), any_sexp & 'b, any_sexp] --> externalptr('a, 'b)) & ([c_ptr('a) \ c_null, any_sexp & 'b, any_sexp] --> externalptr('a, 'b) \ externalptr(empty)) & ([c_null, any_sexp & 'b, any_sexp] --> externalptr(empty, 'b))
 
 // C functions
 

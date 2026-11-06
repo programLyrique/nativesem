@@ -551,3 +551,14 @@
  (deps    cprogs/fortran-names.c cprogs/fortran-names.expected)
  (action  (diff cprogs/fortran-names.expected fortran-names.output)))
 
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/extptr-null.c)
+ (action  (with-stdout-to extptr-null.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/extptr-null.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/extptr-null.c cprogs/extptr-null.expected)
+ (action  (diff cprogs/extptr-null.expected extptr-null.output)))
+
