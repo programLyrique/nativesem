@@ -888,37 +888,7 @@ and aux_string (s: string_) =
         tail
     in
     (locs_to_pos start_loc end_loc, A.Const (A.CStr str))
-and aux_num_lit  s = 
-  let has_float_syntax s =
-    let rec loop i =
-      if i >= String.length s then false
-      else
-        match s.[i] with
-        | '.' | 'e' | 'E' | 'p' | 'P' -> true
-        | _ -> loop (i + 1)
-    in
-    loop 0
-  in
-  let strip_float_suffix s =
-    if String.length s = 0 then s
-    else
-      match s.[String.length s - 1] with
-      | 'f' | 'F' | 'l' | 'L' -> String.sub s 0 (String.length s - 1)
-      | _ -> s
-  in
-  let parse_int s =
-    parse_c_int_literal s
-  in
-  let parse_float s =
-    let core = strip_float_suffix s in
-    Float.of_string core
-  in
-  if has_float_syntax s then
-    A.Const (A.CFloat (parse_float s))
-  else
-    A.Const
-      (try A.CInt (parse_int s)
-       with Failure _ -> A.CFloat (parse_float s))
+and aux_num_lit s = A.Const (U.parse_number_literal s)
 
 and aux_char_lit (c: char_literal) =
   let (start, chars, (loc2, _)) = c in
@@ -1846,6 +1816,15 @@ let%test "aux_num_lit parses hexadecimal integer" =
 
 let%test "aux_num_lit parses hexadecimal integer with suffixes" =
   aux_num_lit "0x2aUL" = A.Const (A.CInt 42)
+
+let%test "aux_num_lit parses hexadecimal integer with e digits" =
+  aux_num_lit "0x9e3779b9" = A.Const (A.CInt 0x9e3779b9)
+  && aux_num_lit "0xE5u" = A.Const (A.CInt 0xE5)
+
+let%test "aux_num_lit parses decimal exponent" =
+  match aux_num_lit "1e3" with
+  | A.Const (A.CFloat f) -> Float.abs (f -. 1000.) < 1e-12
+  | _ -> false
 
 let%test "aux_num_lit parses c-style octal" =
   aux_num_lit "077" = A.Const (A.CInt 63)

@@ -104,12 +104,16 @@ let int_of_char_literal (char_lit : char_literal) =
   | _ -> List.fold_left (fun acc value -> (acc lsl 8) lor (value land 0xFF)) 0 values
 
 let parse_number_literal s =
+  (* In a hexadecimal literal, [e] and [E] are digits: only [.] and the binary
+     exponent [p] / [P] make it a float ([0x9e3779b9] is an integer). *)
   let has_float_syntax s =
+    let hex = String.length s > 1 && s.[0] = '0' && (s.[1] = 'x' || s.[1] = 'X') in
     let rec loop i =
       if i >= String.length s then false
       else
         match s.[i] with
-        | '.' | 'e' | 'E' | 'p' | 'P' -> true
+        | '.' | 'p' | 'P' -> true
+        | 'e' | 'E' when not hex -> true
         | _ -> loop (i + 1)
     in
     loop 0

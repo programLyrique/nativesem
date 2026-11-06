@@ -196,3 +196,6 @@ static R_INLINE int R_integer_plus(int x, int y, bool *pnaflag)
     }
     return x + y;
 }
+
+// The bitwise operators take any int, NA_INTEGER included.
+int bit_xor(int a, int b) { return a ^ b; }

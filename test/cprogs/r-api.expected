@@ -24,3 +24,11 @@ lookup: [sym, env] -> any_sexp
 
 R_init_rapi: [*any] -> ()
 
+copy: ∀'a. [*c_int_na & 'a, *c_int_na, c_int_na] -> 'a
+
+R_make_altstring_class: [c_string, c_string, c_ptr] --> struct R_altrep_class_t
+
+altrep_init: [c_ptr] -> ()
+
+altrep_make: [any_sexp] -> any_sexp
+

@@ -22,3 +22,9 @@ double use_half(void) { return HALF; }
 int use_f_ab(void) { return F_AB; }
 int use_f_shifted(void) { return F_SHIFTED; }
 int use_f_version(void) { return F_VERSION; }
+
+// In a hexadecimal literal, e and E are digits: these are integers.
+#define HEX_e 0x9e3779b9
+#define HEX_E 0xE5
+unsigned int use_hex_e(void) { return HEX_e; }
+unsigned int use_hex_E(void) { return HEX_E; }

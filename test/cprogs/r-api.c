@@ -35,3 +35,13 @@ int typeof_of_eval(SEXP e, SEXP rho) { SEXP v = Rf_eval(e, rho); return TYPEOF(v
 // Variable lookup and routine registration are declared.
 SEXP lookup(SEXP sym, SEXP rho) { return Rf_findVar(sym, rho); }
 void R_init_rapi(DllInfo *dll) { R_registerRoutines(dll, NULL, NULL, NULL, NULL); R_useDynamicSymbols(dll, FALSE); }
+
+// memcpy returns its destination.
+int *copy(int *dst, int *src, int n) { return memcpy(dst, src, n * sizeof(int)); }
+
+// An ALTREP class, as R_ext/Altrep.h declares it.
+typedef struct { SEXP ptr; } R_altrep_class_t;
+R_altrep_class_t R_make_altstring_class(const char *cname, const char *pname, void *info);
+R_altrep_class_t altrep_cls;
+void altrep_init(void *dll) { altrep_cls = R_make_altstring_class("rle", "pkg", dll); }
+SEXP altrep_make(SEXP x) { return R_new_altrep(altrep_cls, x, R_NilValue); }

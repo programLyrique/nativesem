@@ -18,3 +18,5 @@ r_plus_all: ([INT, INT] -> INT) & ([INT1, INT1] -> INT1) & ([DBL, DBL] | [DBL, I
 
 R_integer_plus: ([c_int, c_false, *c_bool] -> c_int) & ([c_int, c(..-1), *c_bool \ c_null] | [c_int, c(..-1), c_null] | [c_int, c(1..), *c_bool \ c_null] | [c_int, c(1..), c_null] -> c_int_na) & ([c_int, c_na, *c_bool] | [c_na, c_int_na, *c_bool] -> c_na)
 
+bit_xor: ([c_int_na, c_int] -> c_int) & ([c_int_na, c_int_na] -> c_int_na)
+

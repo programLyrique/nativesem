@@ -204,12 +204,13 @@ R_ClosureFormals: [empty -> any] --> lang | null
 R_mkClosure: [lang | null, any_sexp, env] --> (any -> any)
 
 // R API: ALTREP
-// R_altrep_class_t is [typedef struct { SEXP ptr; } R_altrep_class_t;] — modelled
-// as a single-field C struct so [R_new_altrep] callers carrying a real
-// [R_altrep_class_t] (rather than [any]) get a meaningful first-arg type.
+// R_altrep_class_t is [typedef struct { SEXP ptr; } R_altrep_class_t;], typed
+// nominally ([struct R_altrep_class_t]) when R's headers declare it, which a .ty
+// file cannot name. The class is an opaque handle, made by R_make_alt*_class:
+// any.
 ALTREP: [any_sexp] --> c_bool
 R_altrep_data2: [any_sexp] --> any_sexp
-R_new_altrep: [s({ ptr : any_sexp }), any_sexp, any_sexp] --> any_sexp
+R_new_altrep: [any, any_sexp, any_sexp] --> any_sexp
 
 // R API: misc
 R_CheckStack2: [c_int] --> c_void
@@ -268,6 +269,7 @@ R_PreserveObject: [any_sexp] --> c_void
 R_ReleaseObject: [any_sexp] --> c_void
 
 // Arithmetic (including pointer arithmetic for strings)
+// The bitwise operators take any int: NA_INTEGER is just INT_MIN in C.
 
 +__2: ([c_int, c_int] --> c_int) & ([c_double, c_double] --> c_double) & ([any, any] --> any) & ([c_int_na, c_int_na] --> c_int_na) & ([c_int_na, c_int] --> c_int_na) & ([c_int, c_int_na] --> c_int_na) & ([c_string, c_int] --> c_string) & ([c_char, c_int] --> c_char) & ([c_char, c_char] --> c_char) & ([*'a, c_int_na] --> *'a) & ([c_int_na, *'a] --> *'a)
 
@@ -277,12 +279,12 @@ R_ReleaseObject: [any_sexp] --> c_void
 
 %__2: [c_int, c_int] --> c_int
 /__2: ([c_int, c_int] --> c_int) & ([c_double, c_double] --> c_double) & ([any, any] --> any)
-|__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int)
-^__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int)
-&__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int)
+|__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int) & ([c_int_na, c_int_na] --> c_int_na)
+^__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int) & ([c_int_na, c_int_na] --> c_int_na)
+&__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int) & ([c_int_na, c_int_na] --> c_int_na)
 ~__1: ([c_int] --> c_int) & ([c_int_na] --> c_int_na)
-<<__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int)
->>__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int)
+<<__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int) & ([c_int_na, c_int_na] --> c_int_na)
+>>__2: ([c_int, c_int] --> c_int) & ([c_int_na, c_int] --> c_int) & ([c_int_na, c_int_na] --> c_int_na)
 
 
 // ['a] --> 'a would also include singleton types, which is not semantically correct for numbers for instance
@@ -433,7 +435,8 @@ VECTOR_PTR_RO: [list] --> *any_sexp
 // length is defined in Rinlinedfuns.h
 length: ([vec1] --> c(1)) & ([vec] --> c_int) & ([null] --> c(0)) & ([sym | (empty -> any) | externalptr] --> c(1)) & ([any_sexp] --> c_int)
 asReal: [any] --> c_double
-memcpy: [any, any, c_int] --> any
+// memcpy returns its destination.
+memcpy: ['a, any, c_int_na] --> 'a
 R_alloc: [c_int, c_int] --> *any // or c_ptr?
 R_isort: [*c_int_na, c_int] --> c_void
 shallow_duplicate: ['a] --> 'a

@@ -12,3 +12,7 @@ use_f_shifted: () -> c(16)
 
 use_f_version: () -> c(66051)
 
+use_hex_e: () -> c(2654435769)
+
+use_hex_E: () -> c(229)
+
