@@ -922,7 +922,7 @@ let rec aux_e (eid, _decl, vars, e) =
   let exact_builtin v =
     match Variable.get_name v with
     | Some name when List.mem name exact_ty_names || String.ends_with ~suffix:"SXP" name ->
-        (match Rstt.Builder.StrMap.find_opt name Defs.parsed_types with
+        (match Rstt.Builder.StrMap.find_opt name (Defs.parsed_types ()) with
          | Some ty -> Some ty
          | None -> Defs.BuiltinVar.find_builtin v)
     | Some name when Defs.BuiltinVar.is_exact name -> Defs.BuiltinVar.find_builtin v

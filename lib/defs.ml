@@ -666,19 +666,10 @@ let load_parsed_types () =
     Rstt.Builder.StrMap.union (fun _k _v1 v2 -> Some v2) acc types
   ) Rstt.Builder.StrMap.empty ty_files
 
-(* Wall-clock time of [load_parsed_types ()] at module-init. Captured here and
-   exposed so [bin/main.ml] can emit a [Phase: load_ty …] line under
-   [--log-times] without restructuring the [let] binding. *)
+(* Wall-clock time of [load_parsed_types ()], set when the types are loaded
+   (cf. [loaded]), so that [bin/main.ml] can emit a [Phase: load_ty …] line
+   under [--log-times]. *)
 let ty_load_time = ref 0.0
-
-let parsed_types, parsed_types_penv =
-  let t0 = Unix.gettimeofday () in
-  let r =
-    Mlsem.Types.PEnv.sequential_handler Mlsem.Types.PEnv.empty
-      (fun () -> load_parsed_types ()) ()
-  in
-  ty_load_time := Unix.gettimeofday () -. t0;
-  r
 
 let build_vars m = 
   let add_var name ty acc =
@@ -700,18 +691,44 @@ let build_vars m =
    installed by [initial_env] is sound for a mutable variable. *)
 let errno_var = MVariable.create (MVariable.AnnotMut (GTy.mk Cint.any)) (Some "errno")
 
-let defs = (tobool, tobool_t) :: (errno_var, Cint.any) :: build_vars parsed_types
-
 module StrMap = Map.Make(String)
-let defs_map = List.fold_left 
-  (fun acc (v, _) -> 
-    match Variable.get_name v with 
-    | Some name -> StrMap.add name v acc
-    | None -> failwith "Definition variable must have a name."
-  ) StrMap.empty defs
 
-let initial_env =
-  let add_def env (v,ty) =
-    Env.add v (GTy.mk ty |> TyScheme.mk_poly) env
+(* The [.ty] files, and everything built from them. They are loaded on first
+   use rather than at module initialisation: a type that mentions a class (e.g.
+   [<factor, ...>] in base.ty) must be built after the class-overloads of that
+   class are declared (cf. [Rstt.Classes.declare_class]), which a client such
+   as TypR does first. *)
+type loaded = {
+  parsed_types : Ty.t Rstt.Builder.StrMap.t ;
+  parsed_types_penv : Mlsem.Types.PEnv.t ;
+  defs_map : Variable.t StrMap.t ;
+  initial_env : Env.t ;
+}
+
+let loaded = lazy (
+  let t0 = Unix.gettimeofday () in
+  let parsed_types, parsed_types_penv =
+    Mlsem.Types.PEnv.sequential_handler Mlsem.Types.PEnv.empty
+      (fun () -> load_parsed_types ()) ()
   in
-  List.fold_left add_def Env.empty defs
+  ty_load_time := Unix.gettimeofday () -. t0;
+  let defs = (tobool, tobool_t) :: (errno_var, Cint.any) :: build_vars parsed_types in
+  let defs_map = List.fold_left
+    (fun acc (v, _) ->
+      match Variable.get_name v with
+      | Some name -> StrMap.add name v acc
+      | None -> failwith "Definition variable must have a name."
+    ) StrMap.empty defs
+  in
+  let initial_env =
+    let add_def env (v,ty) =
+      Env.add v (GTy.mk ty |> TyScheme.mk_poly) env
+    in
+    List.fold_left add_def Env.empty defs
+  in
+  { parsed_types ; parsed_types_penv ; defs_map ; initial_env })
+
+let parsed_types () = (Lazy.force loaded).parsed_types
+let parsed_types_penv () = (Lazy.force loaded).parsed_types_penv
+let defs_map () = (Lazy.force loaded).defs_map
+let initial_env () = (Lazy.force loaded).initial_env

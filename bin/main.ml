@@ -31,7 +31,7 @@ let main ~mlsem_recording opts include_dirs path =
   R_c_typing.Parser.set_include_dirs
     (include_dirs @ env_dirs @ gcc_dirs @ R_c_typing.Parser.default_include_dirs);
   let idenv = Runner.Idenv.empty in
-  let env = Defs.initial_env in
+  let env = Defs.initial_env () in
   if not (Sys.file_exists path) then
     failwith (Printf.sprintf "Path not found: %s" path);
   let is_package = Sys.is_directory path in
@@ -180,7 +180,7 @@ let cmd =
       | Some None -> false
       | Some (Some m) -> Runner.fallback_mode := m ; true
       | None -> fallback_c_signature in
-    PEnv.sequential_handler Defs.parsed_types_penv (fun path -> main ~mlsem_recording {cst; past; ast; mlsem ; typing = not no_typing ; debug ; filter; timeout; fallback_c_signature; call_graph; log_times; lambda_rec} include_dirs path) path |> fst)
+    PEnv.sequential_handler (Defs.parsed_types_penv ()) (fun path -> main ~mlsem_recording {cst; past; ast; mlsem ; typing = not no_typing ; debug ; filter; timeout; fallback_c_signature; call_graph; log_times; lambda_rec} include_dirs path) path |> fst)
      
 
 let () = exit (Cmd.eval cmd)

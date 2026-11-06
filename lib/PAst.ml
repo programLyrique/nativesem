@@ -398,7 +398,7 @@ let lookup_binding env str =
      | None ->
        (match Defs.BuiltinVar.find_builtin_var str with
         | Some _ as r -> r
-        | None -> Defs.StrMap.find_opt str Defs.defs_map))
+        | None -> Defs.StrMap.find_opt str (Defs.defs_map ())))
 
 (* True when [str] is a variable declared in a *block* scope of the function
    body currently being lowered (an upper scope frame), as opposed to a

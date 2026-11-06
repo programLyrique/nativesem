@@ -144,7 +144,7 @@ let is_declaration = function
   | _, PAst.Fundef (_, _, _, (_, PAst.Seq [])) -> true
   | _ -> false
 
-let has_ty_binding name = Defs.StrMap.mem name Defs.defs_map
+let has_ty_binding name = Defs.StrMap.mem name (Defs.defs_map ())
 
 let find_existing_binding name idenv env =
   match Idenv.find_opt (id name) idenv with
@@ -152,7 +152,7 @@ let find_existing_binding name idenv env =
       (try Some (v, Env.find v env)
        with Not_found -> None)
   | None ->
-      match Defs.StrMap.find_opt name Defs.defs_map with
+      match Defs.StrMap.find_opt name (Defs.defs_map ()) with
       | Some v ->
           (try Some (v, Env.find v env)
            with Not_found -> None)
@@ -533,7 +533,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
   | _, PAst.Define (name, value) ->
       let ty = Ast.typeof_const (PAst.aux_const value) |> GTy.mk |> TyScheme.mk_mono in
       let v =
-        if skip_if_defined && not (Defs.StrMap.mem name Defs.defs_map) then begin
+        if skip_if_defined && not (Defs.StrMap.mem name (Defs.defs_map ())) then begin
           let value = PAst.aux_const value in
           if Ast.exact_const value then Defs.BuiltinVar.mark_exact name ;
           Defs.BuiltinVar.register_dynamic name (Ast.typeof_const value)
@@ -1254,16 +1254,16 @@ let%test ".ty bindings have highest precedence" =
   let past = (Position.dummy, PAst.Fundef (Ast.Int, "strerror", [], (Position.dummy, PAst.Seq []))) in
   let idenv, env, _ =
     if has_ty_binding "strerror" then
-      (Idenv.empty, Defs.initial_env, Ast.DeclMap.empty)
+      (Idenv.empty, Defs.initial_env (), Ast.DeclMap.empty)
     else if is_declaration past && Idenv.mem (id "strerror") Idenv.empty then
-      (Idenv.empty, Defs.initial_env, Ast.DeclMap.empty)
+      (Idenv.empty, Defs.initial_env (), Ast.DeclMap.empty)
     else
       let v = MVariable.create Immut (Some "strerror") in
       (Idenv.add (id "strerror") v Idenv.empty,
-       Env.add v tys Defs.initial_env,
+       Env.add v tys (Defs.initial_env ()),
        Ast.DeclMap.empty)
   in
-      match find_existing_binding "strerror" idenv env, find_existing_binding "strerror" Idenv.empty Defs.initial_env with
+      match find_existing_binding "strerror" idenv env, find_existing_binding "strerror" Idenv.empty (Defs.initial_env ()) with
       | Some (actual_v, actual_tys), Some (expected_v, expected_tys) ->
         not (Idenv.mem (id "strerror") idenv)
         && Variable.equal actual_v expected_v
