@@ -324,7 +324,7 @@ let warn_pointer_fallbacks name m reconstructed narrowings =
     | _, visited ->
       let unreachable =
         System.Analyzer.get_unreachable visited m
-        |> List.map (fun (msg : System.Analyzer.msg) -> msg.eid) in
+        |> List.map (fun (d : System.Analyzer.Diagnostic.t) -> d.eid) in
       let reached eid = not (List.exists (Eid.equal eid) unreachable) in
       narrowings |> List.rev |> List.iter (fun (n : Ast.narrowing) ->
         if not (reached n.narrowed) && reached n.replaced then
@@ -435,15 +435,16 @@ let infer_ast ?fallback ?completion ?alternative ~key visible opts (idenv, env, 
       log_timing ();
       report (Timeout seconds) ;
       apply_fallback ()
-  | System.Checker.Untypeable err ->
+  | System.Error.Untypeable err ->
+      let title = System.Error.title err and descr = System.Error.descr err in
       if visible then begin
-        Format.printf "%s:@.untypeable: %s@." name err.title;
-        err.descr |> Option.iter (Format.printf "%s@." )
+        Format.printf "%s:@.untypeable: %s@." name title;
+        descr |> Option.iter (Format.printf "%s@." )
       end ;
       if not opts.mlsem && opts.debug  then (* Still print the mlsem ast*)
         Format.printf "MLsem AST:@.%a@." Mlsem.System.Ast.pp (mlsem_ast_for_dump ());
       log_timing ();
-      report (Untypeable { title = err.title ; descr = err.descr }) ;
+      report (Untypeable { title ; descr }) ;
       apply_fallback ()
   | Not_found ->
       (* Refinement/reconstruction occasionally raises Not_found when an
