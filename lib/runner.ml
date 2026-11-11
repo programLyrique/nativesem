@@ -436,7 +436,10 @@ let infer_ast ?fallback ?completion ?alternative ~key visible opts (idenv, env, 
       report (Timeout seconds) ;
       apply_fallback ()
   | System.Error.Untypeable err ->
-      let title = System.Error.title err and descr = System.Error.descr err in
+      (* [Lang.Error] recognizes the failures of MLsem's encodings, e.g. an
+         assignment to a mutable variable, and reports them as such. *)
+      let err = Mlsem.Lang.Error.of_system err in
+      let title = Mlsem.Lang.Error.title err and descr = Mlsem.Lang.Error.descr err in
       if visible then begin
         Format.printf "%s:@.untypeable: %s@." name title;
         descr |> Option.iter (Format.printf "%s@." )

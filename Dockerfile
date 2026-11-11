@@ -24,7 +24,7 @@ RUN opam update --yes && eval $(opam env) && \
 # vector representation (Vec.Vector / Vec.Scalar); the types/*.ty files and
 # lib/defs.ml are written against it. Keep in sync with .github/workflows/ci.yml.
 ARG SSTT_REF=dda8b29cc3844473c81c4dc4ff698f657000e8a2
-ARG MLSEM_REF=86a92b26f3ac875d7766f46d4d7588c0ef699349
+ARG MLSEM_REF=37359e51998c049485c4afe57ce1c4a6cf3ef35c
 ARG RSTT_REF=a021f9e654dc103be5948565c10fce67f0f32715
 
 # sstt, MLsem, and RSTT are now public — no PAT needed.

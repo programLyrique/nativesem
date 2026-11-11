@@ -1,6 +1,6 @@
 assertPositive_error:
 untypeable: untypeable application
 function: arrow
-argument: [c("Input must be a single real number")]
+argument: [c("Input is not positive")]
 assertPositive_fail: ∀'a. [DBL1 & 'a] -> DBL1 & 'a
 
