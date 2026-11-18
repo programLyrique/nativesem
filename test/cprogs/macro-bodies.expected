@@ -16,7 +16,7 @@ NOT_C: tuple1 --> any
 
 FIRST_POS: [*(~(c(1..) | c_string)) | c_string, any, any] | [*c(1..), any, any] -> ()
 
-use_try: ∀'a. ([c_false & 'a] -> c_false | 'a \ (c_int_na \ c_false)) & ([c_int_na \ c_false & 'a] -> c_false | 'a)
+use_try: ∀'a. [c_false] | [c_int_na \ c_false & 'a] -> c_false | 'a
 
 PRESERVE: [any_sexp] -> c_void
 
