@@ -296,7 +296,7 @@ let windows_only_dirs = ["win32"; "win64"; "windows"]
    share names with functions or variables of the library proper. *)
 let test_dirs = ["test"; "tests"]
 
-let get_c_files path =
+let rec get_c_files path =
   let src_dir = Filename.concat path "src" in
   if not (Sys.file_exists src_dir && Sys.is_directory src_dir) then []
   else
@@ -332,7 +332,39 @@ let get_c_files path =
     let headers, sources =
       List.partition (fun f -> Filename.check_suffix f ".h") all_files
     in
-    headers @ sources
+    headers_included_by sources headers @ sources
+
+(* The [#include]d names of the file at [path], as written. *)
+and includes path =
+  let re = Str.regexp "^[ \t]*#[ \t]*include[ \t]*[\"<]\\([^\">]+\\)[\">]" in
+  match In_channel.with_open_bin path In_channel.input_all with
+  | exception Sys_error _ -> []
+  | text ->
+    let rec go pos acc =
+      match Str.search_forward re text pos with
+      | exception Not_found -> List.rev acc
+      | _ -> go (Str.match_end ()) (Str.matched_group 1 text :: acc)
+    in
+    go 0 []
+
+(* The [headers] the [sources] include, directly or through other headers, in
+   the order of [headers]. Only those: the others belong to the C++ sources
+   (later's [src/callback_registry_table.h], timechange's [src/cctz/]), whose
+   classes and namespaces the C parser cannot read. An [#include] matches the
+   headers of the same base name, wherever they are, since the [-I] flags of
+   [Makevars] are not read (utf8's [src/*.c] include ["utf8lite.h"] from
+   [src/utf8lite/src/]). *)
+and headers_included_by sources headers =
+  let by_base = Hashtbl.create 64 in
+  List.iter (fun h -> Hashtbl.add by_base (Filename.basename h) h) headers;
+  let kept = Hashtbl.create 64 in
+  let rec visit file =
+    includes file |> List.iter (fun name ->
+      Hashtbl.find_all by_base (Filename.basename name) |> List.iter (fun h ->
+        if not (Hashtbl.mem kept h) then (Hashtbl.add kept h (); visit h)))
+  in
+  List.iter visit sources;
+  List.filter (Hashtbl.mem kept) headers
 
 (** The routines registered by the C sources of the package at [path]. *)
 let registered_routines path =
