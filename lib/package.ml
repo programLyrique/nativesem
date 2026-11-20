@@ -291,6 +291,11 @@ static const R_CallMethodDef callMethods[] = {
 
 let windows_only_dirs = ["win32"; "win64"; "windows"]
 
+(* The test suites of vendored libraries (utf8's [src/utf8lite/tests/]): not
+   built into the package, and their helpers ([casefold], [width], [prev])
+   share names with functions or variables of the library proper. *)
+let test_dirs = ["test"; "tests"]
+
 let get_c_files path =
   let src_dir = Filename.concat path "src" in
   if not (Sys.file_exists src_dir && Sys.is_directory src_dir) then []
@@ -308,7 +313,8 @@ let get_c_files path =
             (* Windows-only code (askpass's [src/win32/], sys's
                [src/win32/exec.c]) is only built on Windows, by Makevars.win;
                analysing it on Linux reports Windows APIs as unbound. *)
-            (if List.mem (String.lowercase_ascii entry) windows_only_dirs then acc
+            (let e = String.lowercase_ascii entry in
+             if List.mem e windows_only_dirs || List.mem e test_dirs then acc
              else walk entry_path acc)
           else if Filename.check_suffix entry ".c" || Filename.check_suffix entry ".h" then
             entry_path :: acc
@@ -316,7 +322,9 @@ let get_c_files path =
         ) acc entries
       with _ -> acc
     in
-    let all_files = walk src_dir [] in
+    (* Sorted: [Sys.readdir]'s order depends on the file system, and decides
+       which of two functions with the same name is kept. *)
+    let all_files = List.sort String.compare (walk src_dir []) in
     (* Parse headers before source files so that [#define]s are registered
        in [Parser.define_constants] before any [.c] file that references
        them (e.g. [#define R_PRI_SSIZE "d"] in [rlang-types.h] must be
