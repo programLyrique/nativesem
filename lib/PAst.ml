@@ -152,6 +152,18 @@ let children (_, e) =
   | Switch (e1, cases) -> e1 :: cases
   | Seq es | Block es -> es
 
+(** The names a definition binds locally: its parameters and every variable
+    its body declares, in any block. *)
+let local_names params body =
+  let rec declared acc e =
+    let acc = match snd e with
+      | VarDeclare (_, (_, Id s)) -> StrSet.add s acc
+      | _ -> acc
+    in
+    List.fold_left declared acc (children e)
+  in
+  declared (bv_params params) body
+
 (** Extract variables from an expression*)
 let rec bv_e in_lhs_assign (_,e) = 
   match e with 
@@ -1229,12 +1241,23 @@ let map f e =
 (** Extract function call names from an expression.
     [fun_names] is the set of known function names; bare Id references
     matching a function name in call arguments are treated as function
-    pointer dependencies. *)
-let rec extract_calls_from_expr ?(fun_names=StrSet.empty) (_pos, e') =
-  let extract = extract_calls_from_expr ~fun_names in
+    pointer dependencies.
+
+    [locals] are the names the enclosing definition binds (see
+    [local_names]): a bare use of one is the local, not a reference to the
+    function of the same name (utf8's parameter [width], its local
+    [struct utf8lite_text_iter prev]). A call target stays a call: a local
+    function pointer named like a function only adds an edge. The scope is
+    the whole definition, not the block, to keep [aux_e]'s scoping rules in
+    one place. It goes wrong only for a definition with a local [fn] in one
+    block that also takes the function [fn] as a value ([&fn]) elsewhere:
+    that edge is lost, and typing then reports [fn] as unbound. *)
+let rec extract_calls_from_expr ?(fun_names=StrSet.empty) ?(locals=StrSet.empty) (_pos, e') =
+  let extract = extract_calls_from_expr ~fun_names ~locals in
+  let is_fun name = StrSet.mem name fun_names && not (StrSet.mem name locals) in
   let rec extract_arg (_pos, e') =
     match e' with
-    | Id name when StrSet.mem name fun_names -> [name]
+    | Id name when is_fun name -> [name]
     | Cast (_, inner) -> extract_arg inner
     | CoerceNarrow (_, inner) -> extract_arg inner
     (* [&fn] is the canonical "function as value" syntax (callback
@@ -1255,7 +1278,7 @@ let rec extract_calls_from_expr ?(fun_names=StrSet.empty) (_pos, e') =
      [Call_graph.keep_reachable], and its caller reports a spurious "unbound
      variable". The [fun_names] membership check keeps this to genuine
      function references ([&fn] reaches the [Id] via the [Unop] case below). *)
-  | Id name when StrSet.mem name fun_names -> [name]
+  | Id name when is_fun name -> [name]
   | Const _ | Id _ | Break | Next | Goto _ -> []
   | Labeled (_, e) | LabelBlock (_, e) -> extract e
   | Unop (_, e) -> extract e
@@ -1314,6 +1337,35 @@ let%test "function pointer passed as argument" =
     [mk_e (Id "check_interrupt_fn"); mk_e (Const CNull)])) in
   let calls = extract_calls_from_expr ~fun_names expr in
   calls = ["R_ToplevelExec"; "check_interrupt_fn"]
+
+let%test "a parameter named like a function is not a reference to it" =
+  let mk_e e' = (Mlsem.Common.Position.dummy, e') in
+  let fun_names = StrSet.of_list ["size_add"; "width"] in
+  let params = [Param (Ast.Int, "width")] in
+  (* utf8lite_array_size_add(..., size_t width, ...) { size_add(width) } *)
+  let body = mk_e (Call (mk_e (Id "size_add"), [mk_e (Id "width")])) in
+  extract_calls_from_expr ~fun_names ~locals:(local_names params body) body
+  = ["size_add"]
+
+let%test "a block-local variable named like a function is not a reference to it" =
+  let mk_e e' = (Mlsem.Common.Position.dummy, e') in
+  let fun_names = StrSet.of_list ["retreat"; "prev"] in
+  (* { if (1) { struct iter prev; retreat(&prev); } } *)
+  let body = mk_e (Block [
+      mk_e (If (mk_e (Const (CInt 1)),
+                mk_e (Block [ mk_e (VarDeclare (Ast.Int, mk_e (Id "prev"))) ;
+                              mk_e (Call (mk_e (Id "retreat"),
+                                          [mk_e (Unop ("&", mk_e (Id "prev")))])) ]),
+                None)) ]) in
+  extract_calls_from_expr ~fun_names ~locals:(local_names [] body) body
+  = ["retreat"]
+
+let%test "calling a local named like a function keeps the edge" =
+  let mk_e e' = (Mlsem.Common.Position.dummy, e') in
+  let fun_names = StrSet.of_list ["cb"] in
+  let params = [Param (Ast.Int, "cb")] in
+  let body = mk_e (Call (mk_e (Id "cb"), [])) in
+  extract_calls_from_expr ~fun_names ~locals:(local_names params body) body = ["cb"]
 
 let%test "cast function pointer passed as argument" =
   let pos = Mlsem.Common.Position.dummy in

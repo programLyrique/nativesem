@@ -264,7 +264,7 @@ let collect_fun_names defs_list =
 (** Build a call graph from a single PAst top-level unit *)
 let rec of_past_unit ~fun_names _t (_pos, unit') =
   match unit' with
-  | PAst.Fundef (_, fname, _, body) | PAst.MacroDef (fname, _, body) ->
+  | PAst.Fundef (_, fname, params, body) | PAst.MacroDef (fname, params, body) ->
       (* A macro and a function of the same name share a node: the graph only
          orders definitions, and [topo_sort] schedules both.
          Always register the defining function as a node, even if its body has
@@ -272,7 +272,8 @@ let rec of_past_unit ~fun_names _t (_pos, unit') =
          stubs returning a constant) would be dropped by [keep_reachable]
          even when they are entry points themselves. *)
       let _ = Callgraph.add_node _t fname in
-      let callees = PAst.extract_calls_from_expr ~fun_names body in
+      let locals = PAst.local_names params body in
+      let callees = PAst.extract_calls_from_expr ~fun_names ~locals body in
       List.iter (fun callee -> Callgraph.add_edge _t ~caller:fname ~callee) callees
   | PAst.TypeDecl _ -> ()
   | PAst.GlobalVar _ -> ()
