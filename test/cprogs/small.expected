@@ -10,9 +10,9 @@ check: () -> c_false
 
 incr: [INT1] -> INT1
 
-isFunction: ([arrow] --> c_true) & ([~arrow] --> c_false)
+isFunction: ([empty -> any] --> c_true) & ([~(empty -> any)] --> c_false)
 
-isPrimitive: ([arrow] -> c_true) & ([(~arrow)<...> | null | p(CHR) | sym] -> c_false)
+isPrimitive: ([empty -> any] -> c_true) & ([(~(empty -> any))<...> | null | p(CHR) | sym] -> c_false)
 
 isList: ([(~lang)<...> | p(CHR) | sym] -> c_false) & ([lang] | [null] -> c_true)
 
