@@ -1,8 +1,8 @@
-r_plus_scalar_real: [DBL, DBL] -> DBL1
+r_plus_scalar_real: [DBL, DBL] -> DBL1<> with {  }
 
-make_int_or_float: ([c_false] -> DBL) & ([c_int_na \ c_false] -> INT1)
+make_int_or_float: ([c_false] -> DBL<> with {  }) & ([c_int_na \ c_false] -> INT1<> with {  })
 
-incr_real: [DBL1] -> DBL1
+incr_real: [DBL1] -> DBL1<> with {  }
 
 test_int_or_real: ([DBL] -> c_false) & ([INT] -> c_true) & ([(~(DBL | INT))<...> | null | p(CHR) | sym] -> ())
 
@@ -10,11 +10,11 @@ test_isInt: ([INT] -> c_true) & ([(~INT)<...> | null | p(CHR) | sym] -> c_false)
 
 test_isInt2: ([INT] -> c_true) & ([(~INT)<...> | null | p(CHR) | sym] -> c_false)
 
-r_plus_scalar_strict: ([DBL, DBL] -> DBL1) & ([INT, INT] -> INT1)
+r_plus_scalar_strict: ([DBL, DBL] -> DBL1<> with {  }) & ([INT, INT] -> INT1<> with {  })
 
-r_plus_scalar: ([INT, INT] -> INT1) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> DBL1)
+r_plus_scalar: ([INT, INT] -> INT1<> with {  }) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> DBL1<> with {  })
 
-r_plus_all: ([INT, INT] -> INT) & ([INT1, INT1] -> INT1) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> DBL) & ([DBL1, DBL1] | [DBL1, INT1] | [INT1, DBL1] -> DBL1)
+r_plus_all: ([INT, INT] -> INT<> with {  }) & ([INT1, INT1] -> INT1<> with {  }) & ([DBL, DBL] | [DBL, INT] | [INT, DBL] -> DBL<> with {  }) & ([DBL1, DBL1] | [DBL1, INT1] | [INT1, DBL1] -> DBL1<> with {  })
 
 R_integer_plus: ([c_int, c_false, *c_bool] -> c_int) & ([c_int, c(..-1), *c_bool \ c_null] | [c_int, c(..-1), c_null] | [c_int, c(1..), *c_bool \ c_null] | [c_int, c(1..), c_null] -> c_int_na) & ([c_int, c_na, *c_bool] | [c_na, c_int_na, *c_bool] -> c_na)
 

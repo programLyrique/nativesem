@@ -6,5 +6,5 @@ Entry points for .C convention:
 
 lookup: [c_int_na] -> c_int_na
 
-R_lookup: [INT] -> INT1
+R_lookup: [INT] -> INT1<> with {  }
 

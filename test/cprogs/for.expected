@@ -1,2 +1,2 @@
-sum_all: [DBL] -> DBL1
+sum_all: [DBL] -> DBL1<> with {  }
 

@@ -2,13 +2,13 @@ change_int: ∀'a. ([INT & 'a] -> INT & 'a) & ([^INT1 & 'a] -> ^INT1 & 'a)
 
 errorIntScalar: [INT1] -> ()
 
-make_scalar: () -> INT1
+make_scalar: () -> INT1<> with {  }
 
 isIntScalar: ([INT] -> c_bool) & ([INT1] -> c_true) & ([(~INT)<...> | null | p(CHR) | sym] -> c_false)
 
 check: () -> c_false
 
-incr: [INT1] -> INT1
+incr: [INT1] -> INT1<> with {  }
 
 isFunction: ([empty -> any] --> c_true) & ([~(empty -> any)] --> c_false)
 

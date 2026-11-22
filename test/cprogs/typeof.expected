@@ -1,2 +1,2 @@
-mk_value: [INT] | [env] -> INT1
+mk_value: [INT] | [env] -> INT1<> with {  }
 

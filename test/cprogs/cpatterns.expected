@@ -6,7 +6,7 @@ sized_decl_pattern: ([c_int] -> c_int) & ([c_int_na] -> c_int_na)
 
 mixed_pattern: [c_int_na, c_int_na] -> c_int_na
 
-sint_to_sexp: ∀'a. ([c_int & c_int_na('a)] -> ^INT1('a)) & ([c_int_na \ c_int | c_int_na & c_int_na('a)] -> INT1('a))
+sint_to_sexp: ∀'a. ([c_int & c_int_na('a)] -> ^INT1('a)<> with {  }) & ([c_int_na \ c_int | c_int_na & c_int_na('a)] -> INT1('a)<> with {  })
 
 nested_initializer_list: () -> c_int
 

@@ -1,26 +1,26 @@
-create_pos_list: () -> { _0: null, _1: null, _2: null }
+create_pos_list: () -> { _0: null, _1: null, _2: null }<> with {  }
 
-create_list: () -> { _0: null, _1: null, _2: null }
+create_list: () -> { _0: null, _1: null, _2: null }<> with {  }
 
-create_named_list: () -> { a: any, b: any }
+create_named_list: () -> { a: any, b: any }<> with { names: CHR }
 
-create_list_const_prop: () -> { _0: null, _1: null, _2: null, _3: null, _4: null, _5: null, _6: null }
+create_list_const_prop: () -> { _0: null, _1: null, _2: null, _3: null, _4: null, _5: null, _6: null }<> with {  }
 
-create_list_const_prop2: () -> { _0: null, _1: null, _2: null, _3: null, _4: null, _5: null, _6: null }
+create_list_const_prop2: () -> { _0: null, _1: null, _2: null, _3: null, _4: null, _5: null, _6: null }<> with {  }
 
-create_named_list_with_elems: () -> { a: DBL1, b: DBL1 }
+create_named_list_with_elems: () -> { a: DBL1<> with {  }, b: DBL1<> with {  } }
 
-create_named_list_with_int: () -> { a: 3L, b: 6L }
+create_named_list_with_int: () -> { a: 3L<> with {  }, b: 6L<> with {  } }
 
-create_named_list_set_only_one: () -> { a: 3L, b: any }
+create_named_list_set_only_one: () -> { a: 3L<> with {  }, b: any }
 
 set_noname_list: ∀'a. [any_sexp & 'a] -> { null | attr_any | 'a }
 
 set_protected_noname_list: ∀'a. [any_sexp & 'a] -> { null | attr_any | 'a }
 
-read_in_list: () -> 3L | null
+read_in_list: () -> 3L<> with {  } | null
 
-create_pos_list_rf: () -> { _0: null, _1: null, _2: null }
+create_pos_list_rf: () -> { _0: null, _1: null, _2: null }<> with {  }
 
-create_named_list_rf: () -> { a: any, b: any }
+create_named_list_rf: () -> { a: any, b: any }<> with { names: CHR }
 

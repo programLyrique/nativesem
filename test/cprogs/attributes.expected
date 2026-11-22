@@ -14,7 +14,7 @@ row_names: [any_sexp] -> (CHR | INT) | null
 
 set_class: [any_sexp] -> <myclass>
 
-set_class_on_list: () -> { _0: null, _1: null }<myclass>
+set_class_on_list: () -> { _0: null, _1: null }<myclass> with {  }
 
 set_class_unknown: [any_sexp, any_sexp] -> attr_any
 
@@ -30,7 +30,7 @@ refined_class_first: [any_sexp] -> p("myclass")
 
 dim_roundtrip_constructed: [any_sexp] -> INT
 
-install_roundtrip_constructed: [any_sexp] -> "hello"
+install_roundtrip_constructed: [any_sexp] -> "hello"<> with {  }
 
 dim_roundtrip_arg: ∀'a. [any_sexp, any_sexp & 'a] -> INT | 'a & (INT | null)
 
@@ -40,11 +40,11 @@ get_unset_attr: [any_sexp] -> INT | null
 
 get_dynamic_attr: [any_sexp, any_sexp] -> any_sexp
 
-set_attr_on_param_return_param: [any_sexp] -> any with { dim: INT, any }
+set_attr_on_param_return_param: [any_sexp] -> any with { dim: INT<> with {  }, any }
 
 set_class_on_param_return_param: [any_sexp] -> <myclass>
 
-make_factor: () -> INT<factor> with { levels: CHR, any }
+make_factor: () -> INT<factor> with { levels: CHR }
 
 factor_levels: () -> CHR
 
@@ -52,7 +52,23 @@ named_list_names: () -> CHR
 
 unnamed_list_names: () -> null
 
-set_names_on_list: () -> { a: null, b: null }
+set_names_on_list: () -> { a: null, b: null }<> with { names: CHR }
 
 set_names_then_get: () -> CHR
+
+scalar_real: () -> DBL1<> with {  }
+
+scalar_integer: () -> 3L<> with {  }
+
+scalar_logical: () -> tt<> with {  }
+
+make_string: () -> "a"<> with {  }
+
+scalar_string: () -> "b"<> with {  }
+
+alloc_vector: ([c_int] -> DBL<> with {  }) & ([c_true] -> DBL1<> with {  })
+
+make_named_int: () -> INT<> with { names: CHR }
+
+with_dim: () -> INT<> with { dim: INT }
 

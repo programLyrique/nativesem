@@ -8,7 +8,7 @@ set_attrib_list: [any_sexp] -> { _0: null, _1: null }
 
 set_object_list: () -> { _0: null }
 
-duplicate_attrib: [any_sexp] -> { _0: null }<src>
+duplicate_attrib: [any_sexp] -> { _0: null }<src> with {  }
 
 copy_most_attrib: [any_sexp] -> { _0: null }
 

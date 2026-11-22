@@ -79,8 +79,8 @@ ncols: [vec | list | expr | null | lang] --> c_int
 // are set to R_BlankString, VECSXP/EXPRSXP to R_NilValue). This is the sound
 // fresh-vector type, and lets SET_STRING_ELT's union narrow from "" rather than
 // from chr-top. Only a scalar can record that seed, hence the c(1) overloads.
-allocVector: (['a & prim, c(1)] --> v1('a)) & (['a & prim, c_int] --> v('a)) & ([p(CHR), c(1)] --> v1("")) & ([list, 'b] --> list)
-R_allocResizableVector: (['a & prim, c(1)] --> v1('a)) & (['a & prim, c_int] --> v('a)) & ([list, 'b] --> list) // we might have to support the special case as for the function above, but not the case yet
+allocVector: (['a & prim, c(1)] --> v1('a)<> with {}) & (['a & prim, c_int] --> v('a)<> with {}) & ([p(CHR), c(1)] --> v1("")<> with {}) & ([list, 'b] --> list<> with {})
+R_allocResizableVector: (['a & prim, c(1)] --> v1('a)<> with {}) & (['a & prim, c_int] --> v('a)<> with {}) & ([list, 'b] --> list<> with {}) // we might have to support the special case as for the function above, but not the case yet
 allocSExp: ['a & any_r_not_vec] --> 'a
 install: [c_string] --> sym
 // Variable lookup. The result may be R_UnboundValue (findVar*) or
@@ -90,7 +90,7 @@ findVarInFrame: [env, sym] --> any_sexp
 findVarInFrame3: [env, sym, c_int] --> any_sexp
 
 // when the names are statically known, we can return a more precise type (handled on the OCaml side)
-mkNamed: (['a & prim, *c_string] --> v('a)) & ([list, *c_string] --> list)
+mkNamed: (['a & prim, *c_string] --> v('a)<> with { names: CHR }) & ([list, *c_string] --> list<> with { names: CHR })
 
 VECTOR_ELT: [{ 'r}, c_int] --> 'r
 SET_VECTOR_ELT: ([{ 'r}, c_int, 'a] --> { 'r | 'a}) & ([expr, c_int, lang | sym] --> expr)
@@ -98,14 +98,14 @@ SET_VECTOR_ELT: ([{ 'r}, c_int, 'a] --> { 'r | 'a}) & ([expr, c_int, lang | sym]
 isVector: ([v('a) | expr | list] --> c_true) & ([any_r_not_vec \ (list & expr)] --> c_false)
 isVectorList: ([list | expr] --> c_true) & ([v('a) | any_r_not_vec \ (list | expr)] --> c_false)
 
-ScalarReal: [c_double | c_int] --> DBL1
-ScalarInteger: ([c_int('a)] --> v1(^INT('a))) & ([c_na] --> v1(INT \ ^INT))
-ScalarLogical: ([c(0)] --> v1(ff)) & ([c_na] --> v1(LGL \ ^LGL)) & ([c_int \ c(0)] --> v1(tt))
+ScalarReal: [c_double | c_int] --> DBL1<> with {}
+ScalarInteger: ([c_int('a)] --> v1(^INT('a))<> with {}) & ([c_na] --> v1(INT \ ^INT)<> with {})
+ScalarLogical: ([c(0)] --> v1(ff)<> with {}) & ([c_na] --> v1(LGL \ ^LGL)<> with {}) & ([c_int \ c(0)] --> v1(tt)<> with {})
 
 // Strings 
 na_string = p(CHR \ ^CHR)
-mkString: [c_string('a)] --> v1(^CHR('a))
-ScalarString: [p(CHR & 'a)] --> v1(CHR & 'a)
+mkString: [c_string('a)] --> v1(^CHR('a))<> with {}
+ScalarString: [p(CHR & 'a)] --> v1(CHR & 'a)<> with {}
 mkChar: ([c_string('a)] --> p(^CHR('a))) & ([c_null] --> na_string)
 mkCharLen: ([c_string('a), c_int] --> p(^CHR('a))) & ([c_null, c_int] --> na_string)
 mkCharCE: ([c_string('a), any] --> p(^CHR('a))) & ([c_null, any] --> na_string) // the 2nd argument is the encoding

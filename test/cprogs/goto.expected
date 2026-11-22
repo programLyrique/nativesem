@@ -8,7 +8,7 @@ two: ([c(2)] -> c_false | c(2)) & ([c_int_na \ c(1..2)] -> c_false | c(3)) & ([c
 
 backward: [c_int_na] -> c_int
 
-cleanup: ([c(..-1)] -> null) & ([c(0..)] -> INT) & ([c_true] -> INT1)
+cleanup: ([c(..-1)] -> null) & ([c(0..)] -> INT<> with {  }) & ([c_true] -> INT1<> with {  })
 
 use_try: [c_int_na] -> c_int_na
 

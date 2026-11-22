@@ -1,6 +1,6 @@
 test_while: ∀'a. ([INT & 'a] -> INT & 'a) & ([^INT1 & 'a] -> ^INT1 & 'a)
 
-sum_while: [DBL] -> DBL1
+sum_while: [DBL] -> DBL1<> with {  }
 
-count_do_while: [INT] -> INT1
+count_do_while: [INT] -> INT1<> with {  }
 

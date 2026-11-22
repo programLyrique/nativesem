@@ -250,3 +250,37 @@ SEXP set_names_then_get(void)
   setAttrib(l, R_NamesSymbol, nms);
   return getAttrib(l, R_NamesSymbol);
 }
+
+/* ===== Constructors (see types/base.ty): a fresh value has no class and no
+   attribute, <> with {}, until a setter gives it some or it escapes (cf.
+   escapes.c). ===== */
+SEXP scalar_real(void) { return ScalarReal(1.5); }
+
+SEXP scalar_integer(void) { return ScalarInteger(3); }
+
+SEXP scalar_logical(void) { return ScalarLogical(1); }
+
+SEXP make_string(void) { return mkString("a"); }
+
+SEXP scalar_string(void) { return ScalarString(mkChar("b")); }
+
+SEXP alloc_vector(int n) { return allocVector(REALSXP, n); }
+
+/* mkNamed: no class, and the names. */
+SEXP make_named_int(void)
+{
+  const char *nms[] = {"x", "y", ""};
+  return mkNamed(INTSXP, nms);
+}
+
+/* A setter adds an attribute to a fresh value: only that one. */
+SEXP with_dim(void)
+{
+  SEXP x = PROTECT(allocVector(INTSXP, 4));
+  SEXP d = PROTECT(allocVector(INTSXP, 2));
+  INTEGER(d)[0] = 2;
+  INTEGER(d)[1] = 2;
+  setAttrib(x, R_DimSymbol, d);
+  UNPROTECT(2);
+  return x;
+}

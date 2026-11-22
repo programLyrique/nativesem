@@ -1,8 +1,8 @@
-create_str_from_c_string: () -> "hello"
+create_str_from_c_string: () -> "hello"<> with {  }
 
-create_str_from_chr: () -> "world"
+create_str_from_chr: () -> "world"<> with {  }
 
-create_str_from_concat: () -> "hello world"
+create_str_from_concat: () -> "hello world"<> with {  }
 
 get_c_string_from_str: ([CHR] -> c_string | c_null) & ([CHR1] -> c_string) & ([(clx | (~vec)<...>) | null | sym] -> c_null)
 

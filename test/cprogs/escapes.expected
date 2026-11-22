@@ -1,10 +1,10 @@
 helper: [any_sexp] --> any_sexp
 
-kept_read: () -> { _0: null }<a>
+kept_read: () -> { _0: null }<a> with {  }
 
-kept_reprotect: () -> { _0: null }<a>
+kept_reprotect: () -> { _0: null }<a> with {  }
 
-renamed: () -> { _0: null }<a>
+renamed: () -> { _0: null }<a> with {  }
 
 copied: () -> { _0: null }
 

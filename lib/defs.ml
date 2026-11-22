@@ -46,17 +46,21 @@ let exprsxp = Rstt.Builder.(
 (* Special type constructors for lists*)
 let allocVector_vecsxp_ty n =
   let open Rstt.Builder in 
-  let builder = TList ({ bindings = List.init n (fun i -> ("_" ^ (string_of_int i), TNull)) ; tl = TOption TEmpty }) in
-  build TIdMap.empty builder
+  let content = TList ({ bindings = List.init n (fun i -> ("_" ^ (string_of_int i), TNull)) ; tl = TOption TEmpty }) in
+  (* A fresh list: no class, no attribute. *)
+  let no_attrs = TList { bindings = [] ; tl = TOption TEmpty } in
+  build TIdMap.empty (TAttr { content ; classes = CNoClass ; attrs = no_attrs })
 
 let mkNamed_vecsxp_ty names = 
   let open Rstt.Builder in 
-  let builder =
+  let content =
     TList
       { bindings = List.map (fun name -> (name, TAny)) names;
         tl = TOption TEmpty }
-  in 
-  build TIdMap.empty builder
+  in
+  (* A fresh list: no class, and only its names. *)
+  let attrs = TList { bindings = [ ("names", TVec (Rstt.Vec.Vector PChr)) ] ; tl = TOption TEmpty } in
+  build TIdMap.empty (TAttr { content ; classes = CNoClass ; attrs })
 
 
 let set_vector_elt_ty name =
@@ -497,14 +501,18 @@ let relabel_list content names =
 (* setAttrib(list, R_NamesSymbol, v) with v's STRSXP contents known: relabel the
    list's slots with the ordered names. Non-list content passes through unchanged
    (names are not modeled for non-lists). getAttrib(_, R_NamesSymbol) then reads
-   the relabeled field labels back precisely. *)
+   the relabeled field labels back precisely. The value also gets a [names]
+   attribute, which R lists in [attributes(x)], so that a value known to have
+   no attribute (a fresh vector) does not keep claiming none. *)
 let setAttrib_names_cons_known names tys =
   let open Rstt in
   match tys with
   | [ vec_ty ] ->
     let content = try Attr.proj_content vec_ty with _ -> vec_ty in
     let classes = try Attr.proj_classes vec_ty with _ -> Classes.any in
-    let attrs = try Attr.proj_attrs vec_ty with _ -> Lst.any in
+    let attrs0 = try Attr.proj_attrs vec_ty with _ -> Lst.any in
+    let names_ty = Builder.(build TIdMap.empty (TVec (Vec.Vector PChr))) in
+    let attrs = lst_set_label attrs0 "names" names_ty in
     Attr.mk { content = relabel_list content names; classes; attrs }
   | _ -> assert false
 

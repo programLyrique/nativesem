@@ -1,10 +1,10 @@
-alloc_int_literal: ([c_int] -> INT) & ([c_true] -> INT1)
+alloc_int_literal: ([c_int] -> INT<> with {  }) & ([c_true] -> INT1<> with {  })
 
-alloc_int_enum: ([c_int] -> INT) & ([c_true] -> INT1)
+alloc_int_enum: ([c_int] -> INT<> with {  }) & ([c_true] -> INT1<> with {  })
 
-alloc_double_define: ([c_int] -> DBL) & ([c_true] -> DBL1)
+alloc_double_define: ([c_int] -> DBL<> with {  }) & ([c_true] -> DBL1<> with {  })
 
 alloc_oob:
 untypeable: untypeable application
-function: ([list, any] --> list) & ([p(CHR), c_true] --> "") & ([prim & 'I22, c_int] --> v('I22)) & ([prim & 'I22, c_true] --> v1('I22))
+function: ([list, any] --> list<> with {  }) & ([p(CHR), c_true] --> ""<> with {  }) & ([prim & 'I22, c_int] --> v('I22)<> with {  }) & ([prim & 'I22, c_true] --> v1('I22)<> with {  })
 argument: [c(99), c_int_na & 'I18]

@@ -1,8 +1,8 @@
-add_one: [INT] -> INT1
+add_one: [INT] -> INT1<> with {  }
 
-add_magic: [INT] -> INT1
+add_magic: [INT] -> INT1<> with {  }
 
-alias_simple: [INT] -> INT1
+alias_simple: [INT] -> INT1<> with {  }
 
-alias_chain: [INT] -> INT1
+alias_chain: [INT] -> INT1<> with {  }
 
