@@ -1,0 +1,8 @@
+classgets_result (x: class (returned))
+classgets_after (x: class (returned))
+dimgets_after (x: attrs (returned), d: escapes)
+set_attrib_list (a: escapes)
+set_object_list ()
+duplicate_attrib (from: none)
+copy_most_attrib (from: none)
+clear_attrib ()

@@ -13,7 +13,7 @@ let positive_float =
   in
   Arg.conv (parse, Format.pp_print_float)
 
-let main ~mlsem_recording opts include_dirs path =
+let main ~mlsem_recording ~summaries opts include_dirs path =
   System.Config.infer_overload := true;
   if mlsem_recording then
     Mlsem.Types.Recording.start_recording ();
@@ -35,6 +35,9 @@ let main ~mlsem_recording opts include_dirs path =
   if not (Sys.file_exists path) then
     failwith (Printf.sprintf "Path not found: %s" path);
   let is_package = Sys.is_directory path in
+  if summaries then
+    Summaries.print_for_files (if is_package then Package.get_c_files path else [ path ])
+  else begin
   Printf.printf "Typing %s: %s\n"
     (if is_package then "package" else "file")
     path;
@@ -49,8 +52,8 @@ let main ~mlsem_recording opts include_dirs path =
     if opts.Runner.log_times then
       Format.printf "Phase: recording_save %.3f s@."
         (Unix.gettimeofday () -. t_rec)
-  end;
-  ()
+  end
+  end
 
 let cst_opt =
   let doc = "Print CST (concrete syntax tree)" in
@@ -150,6 +153,14 @@ let log_times_opt =
   in
   Arg.(value & flag & info ["log-times"] ~doc)
 
+let summaries_opt =
+  let doc =
+    "Print the summaries of the package's functions and function-like macros \
+     (what each may do to the classes and attributes of the R values it is \
+     given, per parameter) instead of typing them."
+  in
+  Arg.(value & flag & info ["summaries"] ~doc)
+
 let path_arg =
   let doc = "C source file to parse or package directory to analyze" in
   Arg.(required & pos 0 (some string) None & info [] ~docv:"PATH" ~doc)
@@ -174,13 +185,14 @@ let cmd =
      and+ log_times = log_times_opt
      and+ lambda_rec = lambda_rec_opt
      and+ mlsem_recording = mlsem_recording_opt
+     and+ summaries = summaries_opt
     and+ path = path_arg in
     let fallback_c_signature =
       match fallback_mode with
       | Some None -> false
       | Some (Some m) -> Runner.fallback_mode := m ; true
       | None -> fallback_c_signature in
-    PEnv.sequential_handler (Defs.parsed_types_penv ()) (fun path -> main ~mlsem_recording {cst; past; ast; mlsem ; typing = not no_typing ; debug ; filter; timeout; fallback_c_signature; call_graph; log_times; lambda_rec} include_dirs path) path |> fst)
+    PEnv.sequential_handler (Defs.parsed_types_penv ()) (fun path -> main ~mlsem_recording ~summaries {cst; past; ast; mlsem ; typing = not no_typing ; debug ; filter; timeout; fallback_c_signature; call_graph; log_times; lambda_rec} include_dirs path) path |> fst)
      
 
 let () = exit (Cmd.eval cmd)

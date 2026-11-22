@@ -584,3 +584,36 @@
  (alias   runtest)
  (deps    cprogs/escapes.c cprogs/escapes.expected)
  (action  (diff cprogs/escapes.expected escapes.output)))
+
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/attr-setters.c)
+ (action  (with-stdout-to attr-setters.summaries.output
+              (run %{exe:typing_test.exe} --summaries %{dep:cprogs/attr-setters.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/attr-setters.c cprogs/attr-setters.summaries.expected)
+ (action  (diff cprogs/attr-setters.summaries.expected attr-setters.summaries.output)))
+
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/escapes.c)
+ (action  (with-stdout-to escapes.summaries.output
+              (run %{exe:typing_test.exe} --summaries %{dep:cprogs/escapes.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/escapes.c cprogs/escapes.summaries.expected)
+ (action  (diff cprogs/escapes.summaries.expected escapes.summaries.output)))
+
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/macro-bodies.c)
+ (action  (with-stdout-to macro-bodies.summaries.output
+              (run %{exe:typing_test.exe} --summaries %{dep:cprogs/macro-bodies.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/macro-bodies.c cprogs/macro-bodies.summaries.expected)
+ (action  (diff cprogs/macro-bodies.summaries.expected macro-bodies.summaries.output)))

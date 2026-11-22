@@ -39,3 +39,18 @@ int use_stop(int n) { int i = 0; while (1) { STOP_IF(i >= n); i++; } return i; }
 #define CALL_ERR(f, ...) do { if (f(__VA_ARGS__)) return -1; } while (0)
 int g2(int a, int b);
 int use_call_err(int a, int b) { CALL_ERR(g2, a, b); return 0; }
+
+/* The summaries (typing_test --summaries) of rlang's helpers (vctrs'
+   rlang/attrib.h): a macro and inline functions that change attributes. */
+struct r_symbols { SEXP names; SEXP klass; };
+extern struct r_symbols r_syms;
+#define r_attrib_poke_names(X, VALUE) Rf_setAttrib(X, r_syms.names, VALUE)
+static inline void r_attrib_zap(SEXP x, SEXP tag) { Rf_setAttrib(x, tag, R_NilValue); }
+static inline void r_attrib_clone_from(SEXP to, SEXP from) { SHALLOW_DUPLICATE_ATTRIB(to, from); }
+SEXP use_poke_names(SEXP x, SEXP nms) { r_attrib_poke_names(x, nms); return x; }
+void use_zap(SEXP x) { r_attrib_zap(x, R_NamesSymbol); }
+void use_clone(SEXP x, SEXP y) { r_attrib_clone_from(x, y); }
+
+/* A macro that changes a variable of the code it is expanded in. */
+#define NAME_OUT(v) Rf_setAttrib(out, R_NamesSymbol, v)
+SEXP use_name_out(SEXP out, SEXP v) { NAME_OUT(v); return out; }

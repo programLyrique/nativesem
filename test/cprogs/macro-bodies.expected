@@ -30,3 +30,22 @@ g2: [c_int_na, c_int_na] --> c_int_na
 
 use_call_err: [c_int_na, c_int_na] -> c(-1..0)
 
+r_attrib_poke_names: [any_sexp, any_sexp] -> attr_any
+
+r_attrib_zap: [any_sexp, any_sexp] -> ()
+
+r_attrib_clone_from: [any_sexp, any_sexp] -> ()
+
+use_poke_names: ∀'a. [any_sexp & 'a, any_sexp] -> attr_any | any_sexp & 'a
+
+use_zap: [any_sexp] -> ()
+
+use_clone: [any_sexp, any_sexp] -> ()
+
+Creating fresh variable: out
+NAME_OUT:
+untypeable: invalid mlsem AST: Cannot assign to an immutable variable.
+Creating fresh variable: NAME_OUT
+use_name_out:
+untypeable: unbound variable
+name: NAME_OUT

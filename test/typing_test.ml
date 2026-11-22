@@ -3,13 +3,18 @@ open Mlsem.Types
 module System = Mlsem.System
 
 let usage () =
-  prerr_endline "Usage: typing_test.exe [--fallback-c-signature] <c-file>";
+  prerr_endline "Usage: typing_test.exe [--fallback-c-signature | --summaries] <c-file>";
   exit 2
 
 let () =
   System.Config.infer_overload := true ;
   let fallback_c_signature, full_c_file =
     match Array.to_list Sys.argv with
+    | [ _ ; "--summaries" ; file ] ->
+      (* Only the summaries (cf. [Summaries]), no typing. *)
+      PEnv.sequential_handler (Defs.parsed_types_penv ())
+        (fun file -> Summaries.print_for_files [ file ]) file |> ignore;
+      exit 0
     | [ _ ; file ] -> false, file
     | [ _ ; "--fallback-c-signature" ; file ] -> true, file
     | _ -> usage ()

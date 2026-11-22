@@ -105,3 +105,38 @@ static SEXP helper(SEXP x)
 {
   return x;
 }
+
+/* ===== The summaries (typing_test --summaries): what a function may do to
+   the classes and attributes of the values it is given, per parameter. ===== */
+
+void unknown_function(SEXP x);
+void sum_names(SEXP x, SEXP nms);
+
+/* Only read: none. */
+SEXP sum_reads(SEXP x) { return ScalarInteger(LENGTH(x)); }
+
+/* Returned, through a copy and PROTECT. */
+SEXP sum_returns(SEXP x) { SEXP y = PROTECT(x); UNPROTECT(1); return y; }
+
+/* An attribute other than the class (the value set is stored: escapes). */
+void sum_names(SEXP x, SEXP nms) { setAttrib(x, R_NamesSymbol, nms); }
+
+/* The class, and an attribute not known statically (counts as the class). */
+void sum_class(SEXP x) { setAttrib(x, R_ClassSymbol, mkString("a")); }
+void sum_dynamic(SEXP x, SEXP sym) { setAttrib(x, sym, R_NilValue); }
+
+/* Through a local copy, a callee's summary, a callee returning it. */
+void sum_via_copy(SEXP x) { SEXP y = x; classgets(y, mkString("a")); }
+void sum_via_callee(SEXP x) { sum_names(x, R_NilValue); }
+void sum_via_returned(SEXP x) { SEXP y = sum_returns(x); setAttrib(y, R_DimSymbol, R_NilValue); }
+
+/* Stored into a list or a field, given to unknown code: escapes. */
+void sum_stored(SEXP x, SEXP l) { SET_VECTOR_ELT(l, 0, x); }
+void sum_field(SEXP x, struct holder *h) { h->value = x; }
+void sum_unknown(SEXP x) { unknown_function(x); }
+void sum_pointer(SEXP x, void (*f)(SEXP)) { f(x); }
+
+/* Mutually recursive: the fixpoint. */
+void sum_even(SEXP x, int n);
+void sum_odd(SEXP x, int n) { if (n == 0) classgets(x, R_NilValue); else sum_even(x, n - 1); }
+void sum_even(SEXP x, int n) { if (n > 0) sum_odd(x, n - 1); }

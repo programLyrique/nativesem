@@ -17,7 +17,8 @@
   call_graph
   C_interface
   package
-  cpp_glue)
+  cpp_glue
+  summaries)
  (libraries r-c-typing.c mlsem rstt rstt-repl unix)
  (inline_tests
   (deps
