@@ -1,0 +1,18 @@
+helper: [any_sexp] --> any_sexp
+
+kept_read: () -> { _0: null }<a>
+
+kept_reprotect: () -> { _0: null }<a>
+
+copied: () -> { _0: null }
+
+stored_in_list: () -> { _0: null }
+
+stored_in_struct: () -> { _0: null }
+
+passed: () -> { _0: null }
+
+addressed: () -> { _0: null }
+
+helper: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
+

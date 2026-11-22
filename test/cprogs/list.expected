@@ -14,9 +14,9 @@ create_named_list_with_int: () -> { a: 3L, b: 6L }
 
 create_named_list_set_only_one: () -> { a: 3L, b: any }
 
-set_noname_list: ∀'a. [any_sexp & 'a] -> { null | 'a }
+set_noname_list: ∀'a. [any_sexp & 'a] -> { null | attr_any | 'a }
 
-set_protected_noname_list: ∀'a. [any_sexp & 'a] -> { null | 'a }
+set_protected_noname_list: ∀'a. [any_sexp & 'a] -> { null | attr_any | 'a }
 
 read_in_list: () -> 3L | null
 

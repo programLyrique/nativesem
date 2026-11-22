@@ -2,7 +2,7 @@ classgets_result: [any_sexp] -> <myclass>
 
 classgets_after: [any_sexp] -> <myclass>
 
-dimgets_after: ∀'a. [any_sexp, any_sexp & 'a] -> any with { dim: any_sexp & 'a, any }
+dimgets_after: ∀'a. [any_sexp, any_sexp & 'a] -> any with { dim: attr_any | any_sexp & 'a, any }
 
 set_attrib_list: [any_sexp] -> { _0: null, _1: null }
 

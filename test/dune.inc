@@ -573,3 +573,14 @@
  (alias   runtest)
  (deps    cprogs/attr-setters.c cprogs/attr-setters.expected)
  (action  (diff cprogs/attr-setters.expected attr-setters.output)))
+
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/escapes.c)
+ (action  (with-stdout-to escapes.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/escapes.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/escapes.c cprogs/escapes.expected)
+ (action  (diff cprogs/escapes.expected escapes.output)))

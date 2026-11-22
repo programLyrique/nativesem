@@ -2,7 +2,7 @@ check_interrupt_fn: [c_ptr] -> ()
 
 pending_interrupt: () -> c_bool
 
-build_extptr: ∀'a. ([INT, any_sexp & 'a, any_sexp] -> externalptr(c_int_na, 'a)) & ([^INT1, any_sexp & 'a, any_sexp] -> externalptr(c_int, 'a))
+build_extptr: ∀'a. ([INT, any_sexp & 'a, any_sexp] -> externalptr(c_int_na, attr_any | 'a)) & ([^INT1, any_sexp & 'a, any_sexp] -> externalptr(c_int, attr_any | 'a))
 
 typeof_of_any_sexp: [externalptr] -> (~vec)<...> | null | prim | sym
 

@@ -6,7 +6,7 @@ TWICE: (tuple1 -> any) & ([c_int] -> c_int) & ([c_int_na] -> c_int_na) & ([c_dou
 
 SWAP: tuple2 -> ()
 
-use_keep: ∀'a. [any_sexp & 'a] -> 'a
+use_keep: ∀'a. [any_sexp & 'a] -> attr_any | 'a
 
 use_id: ∀'a. [c_int_na & 'a] -> 'a
 

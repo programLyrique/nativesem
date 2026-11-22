@@ -674,6 +674,116 @@ let rec label_blocks stmts =
       let pos = match prefix with (p, _) :: _ -> p | [] -> fst arr.(k) in
       decls @ [ (pos, LabelBlock (l, (pos, Seq (label_blocks prefix)))) ] @ rest
 
+(* ===== Escapes of R values =====
+
+   The type of an R value a function builds says what its attributes are as
+   long as the function holds it under one name and nothing it does not
+   follow can reach it: the setters of attributes it calls (see the list in
+   types/base.ty, rewritten as [v = f(v, ...)] by [process_call]) are then the
+   only changes. A value escapes when
+   - it is copied into another variable, or stored into another object (an
+     element of an array, a struct field, through a pointer, or by one of the
+     [storing_callees]: a list, a pairlist, an environment, ...);
+   - its address is taken;
+   - it is passed to a function that is not from types/base.ty: one of the
+     package, a macro, an unknown one, or one called through a pointer.
+   Its variable is then widened ([Ast.WidenAttrs]): its attributes and
+   classes are forgotten, as they may change behind it. The functions of
+   types/base.ty only read their arguments, but the setters and the
+   [storing_callees]. Only the variables declared [SEXP] are concerned. *)
+
+let with_rf names = List.concat_map (fun n -> [ n ; "Rf_" ^ n ]) names
+
+(* The protection functions and macros: their argument does not escape, and
+   [y = PROTECT(x)] is a copy of [x]. *)
+let protection_callees =
+  StrSet.of_list (with_rf [ "protect"; "unprotect" ]
+                  @ [ "PROTECT"; "UNPROTECT"; "PROTECT_WITH_INDEX"; "R_ProtectWithIndex";
+                      "REPROTECT"; "R_Reprotect"; "UNPROTECT_PTR";
+                      (* rlang's (vctrs) and vctrs' own *)
+                      "KEEP"; "KEEP_N"; "KEEP2"; "KEEP_AT"; "KEEP_HERE"; "FREE"; "PROTECT_N" ])
+
+(* The functions of types/base.ty that store an argument into another object
+   (from the given position on): it escapes. *)
+let storing_callees =
+  List.map (fun n -> (n, 2)) [ "SET_VECTOR_ELT" ]
+  @ List.map (fun n -> (n, 1))
+      ([ "SETCAR"; "SETCDR"; "SETCADR"; "SETCADDR"; "SETCADDDR"; "SET_TAG";
+         "R_MakeExternalPtr"; "R_SetExternalPtrProtected" ]
+       @ with_rf [ "defineVar"; "setVar" ])
+  @ List.map (fun n -> (n, 0))
+      ([ "R_PreserveObject" ]
+       @ with_rf [ "cons"; "lcons"; "list1"; "list2"; "list3"; "list4"; "list5";
+                   "lang1"; "lang2"; "lang3"; "lang4"; "lang5"; "lang6" ])
+  (* The value given to a setter of attributes is stored into the one it
+     changes. *)
+  @ List.map (fun n -> (n, 1))
+      (with_rf [ "setAttrib"; "classgets"; "namesgets"; "dimgets"; "dimnamesgets" ]
+       @ [ "SET_ATTRIB" ])
+
+(* The setters that only copy attributes from their other argument, which
+   does not escape. *)
+let copying_setters =
+  StrSet.of_list [ "copyMostAttrib"; "DUPLICATE_ATTRIB"; "SHALLOW_DUPLICATE_ATTRIB";
+                   "SET_OBJECT"; "CLEAR_ATTRIB" ]
+
+(* The variable [s] names, if it is one of the function's (or a global) that
+   is declared [SEXP] and can be assigned. *)
+let sexp_var env s =
+  match lookup_in_frames (Name.Ident s) env.id with
+  | Some v when (match MVariable.kind v with MVariable.Mut | MVariable.AnnotMut _ -> true | _ -> false)
+                && Ast.VarMap.find_opt v env.ctypes = Some Ast.SEXP -> Some v
+  | _ -> None
+
+(* The [SEXP] variable the expression [e] denotes, through the protection
+   functions and casts. *)
+let rec denoted_sexp_var env (_, e) =
+  match e with
+  | Id s -> sexp_var env s
+  | Call ((_, Id w), x :: _) | MacroCall (w, x :: _) when StrSet.mem w protection_callees ->
+    denoted_sexp_var env x
+  | Cast (_, x) | CoerceNarrow (_, x) -> denoted_sexp_var env x
+  | _ -> None
+
+(* [v = widen(v)]. *)
+let widen_stmt env v =
+  fresh_e env (Ast.VarAssign (v, fresh_e env (Ast.WidenAttrs (fresh_e env (Ast.Id v)))))
+
+(* [e], after which the variables [vs] are widened; its value is [e]'s. *)
+let widen_after env vs e =
+  match List.sort_uniq compare vs with
+  | [] -> e
+  | vs ->
+    let result = MVariable.create MVariable.Immut (Some "_call") in
+    let after = List.fold_right (fun v rest -> Ast.Seq (widen_stmt env v, fresh_e env rest))
+        vs (Ast.Id result) in
+    Ast.Let (result, fresh_e env e, fresh_e env after)
+
+(* [e], before which the variables [vs] are widened. *)
+let widen_before env vs e =
+  List.fold_right (fun v rest -> Ast.Seq (widen_stmt env v, fresh_e env rest))
+    (List.sort_uniq compare vs) e
+
+(* Whether the name [f] calls a function of types/base.ty, not shadowed by
+   one of the package. *)
+let is_base_function env f =
+  Option.is_none (lookup_in_frames (Name.Ident f) env.id)
+  && Option.is_some (lookup_binding env f)
+
+(* The [SEXP] variables of the arguments [args] of a call of [f] that escape:
+   [`Before vs], to widen before the call (stored by it), or [`After vs]
+   (passed to code that is not followed). *)
+let escaping_args env f args =
+  let vars_from k =
+    List.filteri (fun i _ -> i >= k) args |> List.filter_map (denoted_sexp_var env) in
+  match f with
+  | (_, Id name) when StrSet.mem name protection_callees || StrSet.mem name copying_setters ->
+    `Before []
+  | (_, Id name) when List.mem_assoc name storing_callees ->
+    `Before (vars_from (List.assoc name storing_callees))
+  | (_, Id name) when is_base_function env name -> `Before []
+  | _ -> `After (vars_from 0)
+
 let tmp_counter = ref 0
 let fresh_tmp env =
   incr tmp_counter ;
@@ -707,6 +817,10 @@ let rec aux_e env (pos,e) =
       let assign = aux_assign env' pos lhs (pos, Unop (String.sub op 4 2, (pos, Id old_name))) in
       Ast.Let (old, aux_e env lhs,
         fresh_e env' (Ast.Seq (fresh_e env' assign, fresh_e env' (Ast.Id old))))
+  | Unop ("&", ((_, Id s) as e1)) when Option.is_some (sexp_var env s) ->
+      (* The address of an R value: it escapes. *)
+      let v = Option.get (sexp_var env s) in
+      widen_before env [ v ] (Ast.Unop (var env "&__1", aux_e env e1))
   | Unop (op, e) -> Ast.Unop (var env (op ^ "__1"), aux_e env e)
   | FieldAccess (e, field) -> Ast.FieldRead (aux_e env e, field)
   | Call (f, args) -> process_call env f args
@@ -715,7 +829,12 @@ let rec aux_e env (pos,e) =
          that is not bound (its definition was not reached, or failed without
          a fallback) is called like a function of that name. *)
       (match lookup_in_frames (Name.Macro name) env.id with
-       | Some v -> call_variadic_aware env (Name.Macro name) (fresh_e env (Ast.Id v)) args
+       | Some v ->
+         let call = call_variadic_aware env (Name.Macro name) (fresh_e env (Ast.Id v)) args in
+         (* The R values given to a macro of the package escape, but to the
+            protection ones. *)
+         if StrSet.mem name protection_callees then call
+         else widen_after env (List.filter_map (denoted_sexp_var env) args) call
        | None -> process_call env (pos, Id name) args)
   | If (cond, then_, else_) -> 
       Ast.If (aux_e env cond, aux_e env then_, Option.map (aux_e env) else_)
@@ -888,11 +1007,24 @@ and aux_assign_value env pos lhs e2 =
       Ast.Seq (fresh_e env (aux_assign env pos lhs e2), fresh_e env (Ast.Id (var env s)))
   | _ ->
       let env', v, v_name = fresh_tmp env in
-      Ast.Let (v, aux_e env e2,
+      let e = Ast.Let (v, aux_e env e2,
         fresh_e env' (Ast.Seq (fresh_e env' (aux_assign env' pos lhs (pos, Id v_name)),
-                               fresh_e env' (Ast.Id v))))
-(* The assignment [lhs = e2] itself, as a statement. *)
+                               fresh_e env' (Ast.Id v)))) in
+      (* An R value stored from a variable escapes (cf. [aux_assign]). *)
+      (match denoted_sexp_var env e2 with
+       | Some v2 -> widen_before env [ v2 ] e
+       | None -> e)
+(* The assignment [lhs = e2] itself, as a statement. An R value assigned
+   from a variable escapes (it is copied, or stored into another object), but
+   for [x = PROTECT(x)]. *)
 and aux_assign env pos lhs e2 =
+  let assign = aux_assign' env pos lhs e2 in
+  match denoted_sexp_var env e2, lhs with
+  | Some v2, (_, Id s) when (match lookup_in_frames (Name.Ident s) env.id with
+                             | Some v -> v == v2 | None -> false) -> assign
+  | Some v2, _ -> widen_before env [ v2 ] assign
+  | None, _ -> assign
+and aux_assign' env pos lhs e2 =
   let e = VarAssign (lhs, e2) in
   match e with
   | VarAssign ((_,Id s), e2) ->
@@ -1127,6 +1259,15 @@ and process_call env f args =
                Option.map (fun ty -> (v, ty)) (Ast.VarMap.find_opt v env.ctypes)
            | _ -> None)
       | _ -> None) args
+  in
+  (* The R values the call stores, or passes to code that is not followed,
+     escape (cf. [escaping_args]). The ones passed by address are handled
+     above. *)
+  let addressed_vars = List.map fst addressed in
+  let e =
+    match escaping_args env f args with
+    | `Before vs -> widen_before env (List.filter (fun v -> not (List.memq v addressed_vars)) vs) e
+    | `After vs -> widen_after env (List.filter (fun v -> not (List.memq v addressed_vars)) vs) e
   in
   if addressed = [] then e
   else

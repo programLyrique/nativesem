@@ -32,7 +32,7 @@ dim_roundtrip_constructed: [any_sexp] -> INT
 
 install_roundtrip_constructed: [any_sexp] -> "hello"
 
-dim_roundtrip_arg: ∀'a. [any_sexp, any_sexp & 'a] -> 'a & (INT | null)
+dim_roundtrip_arg: ∀'a. [any_sexp, any_sexp & 'a] -> INT | 'a & (INT | null)
 
 class_then_dim_keeps_class: [any_sexp] -> "myclass"
 

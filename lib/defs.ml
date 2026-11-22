@@ -408,8 +408,11 @@ let widen ~classes ty =
    an int). *)
 let set_attrib_cdom _result_ty = [ [ any_sexp; Ty.any ] ]
 
-(* [SET_ATTRIB(x, attributes)], [SET_OBJECT(x, flag)]: [x]'s attributes and
-   classes are unknown. *)
+(* Domain of [Ast.WidenAttrs]: anything (what has no attributes is kept). *)
+let widen_cdom _result_ty = [ [ Ty.any ] ]
+
+(* [SET_ATTRIB(x, attributes)], [SET_OBJECT(x, flag)], and [Ast.WidenAttrs]:
+   [x]'s attributes and classes are unknown. *)
 let widen_first_cons tys =
   match tys with
   | x :: _ -> widen ~classes:true x
