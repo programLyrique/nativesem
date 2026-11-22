@@ -1,0 +1,16 @@
+classgets_result: [any_sexp] -> <myclass>
+
+classgets_after: [any_sexp] -> <myclass>
+
+dimgets_after: ∀'a. [any_sexp, any_sexp & 'a] -> any with { dim: any_sexp & 'a, any }
+
+set_attrib_list: [any_sexp] -> { _0: null, _1: null }
+
+set_object_list: () -> { _0: null }
+
+duplicate_attrib: [any_sexp] -> { _0: null }<src>
+
+copy_most_attrib: [any_sexp] -> { _0: null }
+
+clear_attrib: () -> { _0: null }<> with {  }
+

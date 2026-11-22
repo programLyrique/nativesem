@@ -1048,6 +1048,11 @@ and process_call env f args =
      actually *returns* in R, so value-position uses ([return f(...)],
      [y = f(...)]) stay faithful:
        - setAttrib / Rf_setAttrib return the object (vec, the 1st arg) -> yield v
+         (so do classgets, namesgets, dimgets and dimnamesgets)
+       - SET_ATTRIB, SET_OBJECT, DUPLICATE_ATTRIB, SHALLOW_DUPLICATE_ATTRIB and
+         CLEAR_ATTRIB change their 1st argument and return void       -> yield unit
+       - copyMostAttrib(from, to) changes its 2nd argument, void        -> yield unit
+         (These are the setters of attributes listed in types/base.ty.)
        - SET_VECTOR_ELT returns the element (3rd arg)                  -> yield it
        - SET_STRING_ELT returns void                                  -> yield unit
          (a bare VarAssign yields unit, so no trailing read).
@@ -1056,9 +1061,17 @@ and process_call env f args =
   let set_call loc1 = mk_e env (Eid.unique_with_pos loc1)
       (Ast.Call (aux_e env f, List.map (aux_e env) args)) in
   let e = match (f, args) with
-  | (loc1,Id ("setAttrib" | "Rf_setAttrib")),(_, Id v)::_ ->
+  | (loc1,Id ("setAttrib" | "Rf_setAttrib" | "classgets" | "Rf_classgets"
+             | "namesgets" | "Rf_namesgets" | "dimgets" | "Rf_dimgets"
+             | "dimnamesgets" | "Rf_dimnamesgets")),(_, Id v)::_ ->
    let vv = var env v in
    Ast.Seq (fresh_e env (Ast.VarAssign (vv, set_call loc1)), fresh_e env (Ast.Id vv))
+  | (loc1,Id ("SET_ATTRIB" | "SET_OBJECT" | "DUPLICATE_ATTRIB" | "SHALLOW_DUPLICATE_ATTRIB"
+             | "CLEAR_ATTRIB")),
+    (_, Id v)::_ ->
+   Ast.VarAssign (var env v, set_call loc1)
+  | (loc1,Id "copyMostAttrib"),_::(_, Id v)::_ ->
+   Ast.VarAssign (var env v, set_call loc1)
   | (loc1,Id "SET_VECTOR_ELT"),((_, Id v)::_::elt::_) ->
    let vv = var env v in
    Ast.Seq (fresh_e env (Ast.VarAssign (vv, set_call loc1)), aux_e env elt)

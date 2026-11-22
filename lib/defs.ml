@@ -387,6 +387,69 @@ let setAttrib_dynamic_cons tys =
     Attr.mk { content; classes; attrs }
   | _ -> assert false
 
+(* ===== Forgetting what is known of a value's attributes =====
+
+   [widen ~classes ty] keeps what [ty] says of a value's content and forgets
+   its attributes, and its classes too if [classes]: the type of a value whose
+   attributes code whose effect is not followed may have changed. The part of
+   [ty] that has no attributes at all (NULL, a CHARSXP, a symbol) is kept. *)
+let widen ~classes ty =
+  let open Rstt in
+  let a = Ty.cap ty Attr.any in
+  if Ty.is_empty a then ty else
+  let content = try Attr.proj_content a with _ -> Attr.proj_content Attr.any in
+  let kept_classes = try Attr.proj_classes a with _ -> Classes.any in
+  let classes = if classes then Classes.any else kept_classes in
+  Ty.cup (Ty.diff ty Attr.any) (Attr.mk { content; classes; attrs = Lst.any })
+
+(* The setters of attributes other than [setAttrib] (see the list in
+   types/base.ty). Their first argument is the value they change, except for
+   [copyMostAttrib(from, to)]; the second one is anything ([SET_OBJECT]'s is
+   an int). *)
+let set_attrib_cdom _result_ty = [ [ any_sexp; Ty.any ] ]
+
+(* [SET_ATTRIB(x, attributes)], [SET_OBJECT(x, flag)]: [x]'s attributes and
+   classes are unknown. *)
+let widen_first_cons tys =
+  match tys with
+  | x :: _ -> widen ~classes:true x
+  | [] -> assert false
+
+(* [DUPLICATE_ATTRIB(to, from)], [SHALLOW_DUPLICATE_ATTRIB(to, from)]: [to]
+   keeps its content and takes [from]'s classes and attributes. When either
+   may have no attributes at all (e.g. NULL), [to]'s are unknown. *)
+let duplicate_attrib_cons tys =
+  let open Rstt in
+  match tys with
+  | [ to_ty; from_ty ] ->
+    if Ty.leq to_ty Attr.any && Ty.leq from_ty Attr.any && not (Ty.is_empty from_ty) then
+      Attr.mk { content = Attr.proj_content to_ty ; classes = Attr.proj_classes from_ty ;
+                attrs = Attr.proj_attrs from_ty }
+    else widen ~classes:true to_ty
+  | _ -> assert false
+
+(* [copyMostAttrib(from, to)]: [to] takes [from]'s attributes but its names,
+   dim and dimnames: they are unknown. *)
+let copy_most_attrib_cons tys =
+  match tys with
+  | [ _from; to_ty ] -> widen ~classes:true to_ty
+  | _ -> assert false
+
+(* [CLEAR_ATTRIB(x)]: x keeps its content, and has no class and no attribute
+   left. *)
+let clear_attrib_cons tys =
+  let open Rstt in
+  match tys with
+  | [ x ] ->
+    let a = Ty.cap x Attr.any in
+    if Ty.is_empty a then x
+    else Ty.cup (Ty.diff x Attr.any) (Attr.mk_content_noattr (Attr.proj_content a))
+  | _ -> assert false
+
+(* [namesgets(x, names)] with names that are not known: as [setAttrib]'s
+   signature for an unknown attribute, an R value. *)
+let any_sexp_cons _tys = any_sexp
+
 (* ===== const-prop'd STRSXP contents: setAttrib(class/names) with known,
    ordered strings (no type-read, no "" seed). Used when the value being set is
    an [allocVector(STRSXP,n)]+[SET_STRING_ELT] build-up the const-prop tracked. *)

@@ -535,6 +535,52 @@ let rec aux_e (eid, _decl, vars, e) =
         Some (aux_e v_arg, Defs.inherits_test_ty name, negated)
     | _ -> None
   in
+  (* setAttrib(v, sym, val), [target] being the attribute [sym] denotes:
+       - Class: keep v's content/attrs, install val's classes.
+       - Named name: set that attrs label to val's type (content/classes/other
+         attrs preserved).
+       - Dynamic: widen the attrs tail with val's type.
+       - Names: relabel a list whose names are const-prop'd; [fallback]
+         otherwise. *)
+  let set_attrib target v_arg val_arg ~fallback =
+    match target with
+    | `Class ->
+        (* if val's STRSXP contents are const-prop'd, take the exact class
+           names (no type-read, no "" seed); else the general type-level path. *)
+        (match strsxp_of_arg val_arg with
+         | Some strs ->
+             A.Constructor
+               (SA.CCustom { cname="setClassAttrib!"; cgen=true;
+                             cdom=Defs.setAttrib_one_cdom;
+                             cons=Defs.setAttrib_class_cons_known strs },
+                [aux_e v_arg])
+         | None ->
+             A.Constructor
+               (SA.CCustom { cname="setClassAttrib"; cgen=true;
+                             cdom=Defs.setAttrib_class_cdom; cons=Defs.setAttrib_class_cons },
+                [aux_e v_arg; aux_e val_arg]))
+    | `Named name ->
+        A.Constructor
+          (SA.CCustom { cname="setAttrib:" ^ name; cgen=true;
+                        cdom=Defs.setAttrib_class_cdom; cons=Defs.setAttrib_named_cons name },
+           [aux_e v_arg; aux_e val_arg])
+    | `Dynamic ->
+        A.Constructor
+          (SA.CCustom { cname="setAttrib:?"; cgen=true;
+                        cdom=Defs.setAttrib_class_cdom; cons=Defs.setAttrib_dynamic_cons },
+           [aux_e v_arg; aux_e val_arg])
+    | `Names ->
+        (* if val's STRSXP contents are const-prop'd, relabel the list's
+           slots with the ordered names; else defer (warn + generic). *)
+        (match strsxp_of_arg val_arg with
+         | Some strs ->
+             A.Constructor
+               (SA.CCustom { cname="setNamesAttrib!"; cgen=true;
+                             cdom=Defs.setAttrib_one_cdom;
+                             cons=Defs.setAttrib_names_cons_known strs },
+                [aux_e v_arg])
+         | None -> fallback ())
+  in
   let rec aux e =
     match e with
     | Const c -> A.Value (typeof_const c |> GTy.mk )
@@ -610,57 +656,62 @@ let rec aux_e (eid, _decl, vars, e) =
                (SA.PCustom { pname="getNamesAttrib"; pgen=true;
                              pdom=Defs.getAttrib_attr_pdom; proj=Defs.getAttrib_names_ty },
                 aux_e v_arg))
-    (* setAttrib(v, sym, val): dual of getAttrib.
-       - Class: keep v's content/attrs, install val's classes.
-       - Named name: set that attrs label to val's type (content/classes/other
-         attrs preserved).
-       - Dynamic: widen the attrs tail with val's type.
-       - Names: deferred; warn and type generically.
-       (The R-internal [classgets(v, val)] 2-arg alias is not in the corpus, so
-       we do not special-case it.) *)
+    (* setAttrib(v, sym, val): dual of getAttrib (cf. [set_attrib]).
+       (The R-internal [classgets(v, val)] and the like are the same for one
+       attribute, below.) *)
     | Call(((_,_,_,Id f) as fnode), ([v_arg; symarg; val_arg] as args))
         when is_rfun "setAttrib" f ->
-        (match attr_target_of_symarg symarg with
-         | `Class ->
-             (* if val's STRSXP contents are const-prop'd, take the exact class
-                names (no type-read, no "" seed); else the general type-level path. *)
-             (match strsxp_of_arg val_arg with
-              | Some strs ->
-                  A.Constructor
-                    (SA.CCustom { cname="setClassAttrib!"; cgen=true;
-                                  cdom=Defs.setAttrib_one_cdom;
-                                  cons=Defs.setAttrib_class_cons_known strs },
-                     [aux_e v_arg])
-              | None ->
-                  A.Constructor
-                    (SA.CCustom { cname="setClassAttrib"; cgen=true;
-                                  cdom=Defs.setAttrib_class_cdom; cons=Defs.setAttrib_class_cons },
-                     [aux_e v_arg; aux_e val_arg]))
-         | `Named name ->
-             A.Constructor
-               (SA.CCustom { cname="setAttrib:" ^ name; cgen=true;
-                             cdom=Defs.setAttrib_class_cdom; cons=Defs.setAttrib_named_cons name },
-                [aux_e v_arg; aux_e val_arg])
-         | `Dynamic ->
-             A.Constructor
-               (SA.CCustom { cname="setAttrib:?"; cgen=true;
-                             cdom=Defs.setAttrib_class_cdom; cons=Defs.setAttrib_dynamic_cons },
-                [aux_e v_arg; aux_e val_arg])
-         | `Names ->
-             (* if val's STRSXP contents are const-prop'd, relabel the list's
-                slots with the ordered names; else defer (warn + generic). *)
-             (match strsxp_of_arg val_arg with
-              | Some strs ->
-                  A.Constructor
-                    (SA.CCustom { cname="setNamesAttrib!"; cgen=true;
-                                  cdom=Defs.setAttrib_one_cdom;
-                                  cons=Defs.setAttrib_names_cons_known strs },
-                     [aux_e v_arg])
-              | None ->
-                  Format.eprintf
-                    "Warning: setAttrib on R_NamesSymbol; names are modeled via list field \
-                     bindings, not the attrs field@.";
-                  build_call (aux_e fnode) (List.map aux_e args)))
+        set_attrib (attr_target_of_symarg symarg) v_arg val_arg
+          ~fallback:(fun () ->
+            Format.eprintf
+              "Warning: setAttrib on R_NamesSymbol; names are modeled via list field \
+               bindings, not the attrs field@.";
+            build_call (aux_e fnode) (List.map aux_e args))
+    (* The other setters of attributes (see the list in types/base.ty).
+       [classgets(v, val)], [namesgets], [dimgets], [dimnamesgets]: as
+       [setAttrib] with the symbol of their attribute. *)
+    | Call((_,_,_,Id f), [v_arg; val_arg])
+        when List.exists (fun n -> is_rfun n f) ["classgets"; "namesgets"; "dimgets"; "dimnamesgets"] ->
+        let target =
+          if is_rfun "classgets" f then `Class
+          else if is_rfun "namesgets" f then `Names
+          else if is_rfun "dimgets" f then `Named "dim"
+          else `Named "dimnames"
+        in
+        set_attrib target v_arg val_arg
+          ~fallback:(fun () ->
+            A.Constructor
+              (SA.CCustom { cname="namesgets"; cgen=true;
+                            cdom=Defs.set_attrib_cdom; cons=Defs.any_sexp_cons },
+               [aux_e v_arg; aux_e val_arg]))
+    (* [SET_ATTRIB(x, attributes)] and [SET_OBJECT(x, flag)]: x's attributes
+       and classes become unknown. *)
+    | Call((_,_,_,Id f), [x_arg; other_arg])
+        when is_rfun "SET_ATTRIB" f || is_rfun "SET_OBJECT" f ->
+        A.Constructor
+          (SA.CCustom { cname="widenAttrib"; cgen=true;
+                        cdom=Defs.set_attrib_cdom; cons=Defs.widen_first_cons },
+           [aux_e x_arg; aux_e other_arg])
+    (* [DUPLICATE_ATTRIB(to, from)]: to takes from's classes and attributes. *)
+    | Call((_,_,_,Id f), [to_arg; from_arg])
+        when is_rfun "DUPLICATE_ATTRIB" f || is_rfun "SHALLOW_DUPLICATE_ATTRIB" f ->
+        A.Constructor
+          (SA.CCustom { cname="duplicateAttrib"; cgen=true;
+                        cdom=Defs.setAttrib_class_cdom; cons=Defs.duplicate_attrib_cons },
+           [aux_e to_arg; aux_e from_arg])
+    (* [CLEAR_ATTRIB(x)]: x has no attribute left. *)
+    | Call((_,_,_,Id f), [x_arg]) when is_rfun "CLEAR_ATTRIB" f ->
+        A.Constructor
+          (SA.CCustom { cname="clearAttrib"; cgen=true;
+                        cdom=Defs.setAttrib_one_cdom; cons=Defs.clear_attrib_cons },
+           [aux_e x_arg])
+    (* [copyMostAttrib(from, to)]: the attributes of to become unknown. *)
+    | Call((_,_,_,Id f), [from_arg; to_arg])
+        when is_rfun "copyMostAttrib" f ->
+        A.Constructor
+          (SA.CCustom { cname="copyMostAttrib"; cgen=true;
+                        cdom=Defs.setAttrib_class_cdom; cons=Defs.copy_most_attrib_cons },
+           [aux_e from_arg; aux_e to_arg])
     (* Named lists*)
     | Call ((eid,_,_,Id v1), [(_, _,_,Id v2) as id2; ( _ ,_,_, idx); value])
       when (Variable.get_name v1 = Some "SET_VECTOR_ELT") &&

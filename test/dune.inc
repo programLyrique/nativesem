@@ -562,3 +562,14 @@
  (deps    cprogs/extptr-null.c cprogs/extptr-null.expected)
  (action  (diff cprogs/extptr-null.expected extptr-null.output)))
 
+
+(rule
+ (alias   runtest)
+ (deps    (glob_files ../types/*.ty) cprogs/attr-setters.c)
+ (action  (with-stdout-to attr-setters.output
+              (run %{exe:typing_test.exe} %{dep:cprogs/attr-setters.c}))))
+
+(rule
+ (alias   runtest)
+ (deps    cprogs/attr-setters.c cprogs/attr-setters.expected)
+ (action  (diff cprogs/attr-setters.expected attr-setters.output)))
