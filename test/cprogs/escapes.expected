@@ -4,7 +4,11 @@ kept_read: () -> { _0: null }<a>
 
 kept_reprotect: () -> { _0: null }<a>
 
+renamed: () -> { _0: null }<a>
+
 copied: () -> { _0: null }
+
+copied_in_loop: [c_int_na] -> null | attr_any
 
 stored_in_list: () -> { _0: null }
 

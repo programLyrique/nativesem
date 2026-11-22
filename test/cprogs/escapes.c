@@ -27,12 +27,34 @@ SEXP kept_reprotect(void)
   return l;
 }
 
-/* Copied into another variable: both forget the class. */
+/* Renamed: copied into a local, and not read again. Kept. */
+SEXP renamed(void)
+{
+  SEXP l = PROTECT(allocVector(VECSXP, 1));
+  setAttrib(l, R_ClassSymbol, mkString("a"));
+  SEXP m = l;
+  UNPROTECT(1);
+  return m;
+}
+
+/* Copied into another variable, and read again: both forget the class. */
 SEXP copied(void)
 {
   SEXP l = PROTECT(allocVector(VECSXP, 1));
   setAttrib(l, R_ClassSymbol, mkString("a"));
   SEXP m = l;
+  if (LENGTH(m) > 1) Rf_error("no");
+  UNPROTECT(1);
+  return l;
+}
+
+/* Copied in a loop: the copy may be executed several times. */
+SEXP copied_in_loop(int n)
+{
+  SEXP l = PROTECT(allocVector(VECSXP, 1));
+  setAttrib(l, R_ClassSymbol, mkString("a"));
+  SEXP m = R_NilValue;
+  for (int i = 0; i < n; i++) m = l;
   UNPROTECT(1);
   return m;
 }

@@ -152,6 +152,7 @@ let children (_, e) =
   | Switch (e1, cases) -> e1 :: cases
   | Seq es | Block es -> es
 
+
 (** The names a definition binds locally: its parameters and every variable
     its body declares, in any block. *)
 let local_names params body =
@@ -216,6 +217,31 @@ let rec bv_e in_lhs_assign (_,e) =
 
 module StrMap = Map.Make(String)
 
+(* Where [body] reads each name: the start of each occurrence (line, column;
+   [None] for one without a position), and whether it is in a loop, or in a
+   labelled block (a [goto] back to its label is a loop too), where it may be
+   executed several times. Not counted: a name declared, or set by an
+   assignment. *)
+let read_counts body =
+  let reads = Hashtbl.create 16 in
+  let add s r = Hashtbl.replace reads s (r :: Option.value ~default:[] (Hashtbl.find_opt reads s)) in
+  let start pos =
+    if pos = Mlsem.Common.Position.dummy then None
+    else
+      let p = Mlsem.Common.Position.start_of_position pos in
+      Some (Mlsem.Common.Position.line p, Mlsem.Common.Position.column p)
+  in
+  let rec walk in_loop ((pos, e) as node) =
+    match e with
+    | Id s -> add s (start pos, in_loop)
+    | VarDeclare (_, (_, Id _)) -> ()
+    | VarAssign ((_, Id _), e2) -> walk in_loop e2
+    | While _ | For _ | LabelBlock _ -> List.iter (walk true) (children node)
+    | _ -> List.iter (walk in_loop) (children node)
+  in
+  walk false body ;
+  Hashtbl.fold StrMap.add reads StrMap.empty
+
 (* Object-like identifier-alias macros: [#define NAME TARGET] where [TARGET]
    is a bare C identifier. Recorded by the parser, resolved at use-site in
    [var]. Keeping the table here (rather than in [Parser]) avoids a module
@@ -271,6 +297,9 @@ type env = {
   cells: bool StrMap.t;
     (** The integer variables of the function being lowered that get an
         annotated cell, with whether it is [c_int] (see [annotated_cells]). *)
+  reads: ((int * int) option * bool) list StrMap.t;
+    (** Where the function being lowered reads each name (see
+        [read_counts]). *)
 }
 
 (* [resolve_ctype] expands Typerefs and empty-struct forward references by
@@ -784,6 +813,28 @@ let escaping_args env f args =
   | (_, Id name) when is_base_function env name -> `Before []
   | _ -> `After (vars_from 0)
 
+(* Whether the read of the variable [v] in the expression [e] (a copy of it)
+   is its last one in the function: no read of [v] in a loop (nor this one),
+   and none after this one in the source. *)
+let is_last_read env v e =
+  let rec read_pos (pos, e) =
+    match e with
+    | Id _ -> pos
+    | Call (_, x :: _) | MacroCall (_, x :: _) | Cast (_, x) | CoerceNarrow (_, x) -> read_pos x
+    | _ -> Mlsem.Common.Position.dummy
+  in
+  let here = read_pos e in
+  if here = Mlsem.Common.Position.dummy then false else
+  let p = Mlsem.Common.Position.start_of_position here in
+  let here = (Mlsem.Common.Position.line p, Mlsem.Common.Position.column p) in
+  match Variable.get_name v with
+  | None -> false
+  | Some name ->
+    let reads = Option.value ~default:[] (StrMap.find_opt name env.reads) in
+    List.for_all (function
+        | (Some at, false) -> compare at here <= 0
+        | (None, _) | (_, true) -> false) reads
+
 let tmp_counter = ref 0
 let fresh_tmp env =
   incr tmp_counter ;
@@ -1016,12 +1067,18 @@ and aux_assign_value env pos lhs e2 =
        | None -> e)
 (* The assignment [lhs = e2] itself, as a statement. An R value assigned
    from a variable escapes (it is copied, or stored into another object), but
-   for [x = PROTECT(x)]. *)
+   for [x = PROTECT(x)], and for a renaming: [y = x] or [y = PROTECT(x)], [y]
+   a local of the function, [x] not read after (cf. [is_last_read]): [y] then
+   holds the value alone. *)
 and aux_assign env pos lhs e2 =
   let assign = aux_assign' env pos lhs e2 in
   match denoted_sexp_var env e2, lhs with
   | Some v2, (_, Id s) when (match lookup_in_frames (Name.Ident s) env.id with
                              | Some v -> v == v2 | None -> false) -> assign
+  | Some v2, (_, Id s) when (match lookup_in_frames (Name.Ident s) env.id with
+                             | Some v -> Ast.VarMap.mem v env.ctypes   (* not a global *)
+                             | None -> false)
+                            && is_last_read env v2 e2 -> assign
   | Some v2, _ -> widen_before env [ v2 ] assign
   | None, _ -> assign
 and aux_assign' env pos lhs e2 =
@@ -1313,7 +1370,7 @@ and translate_def ?self env key ret_ty name params body =
       | None -> env
       | Some v -> { env with id = NameMap.singleton (Name.Ident name) v :: env.id }
     in
-    let env = { env with cells = annotated_cells params body } in
+    let env = { env with cells = annotated_cells params body ; reads = read_counts body } in
     (* Bind every parameter into the topmost scope frame. The body is emitted
        by the parser as a [Block] for actual definitions and as [Seq []] for
        forward declarations; treat [Block] specially so the function body's
