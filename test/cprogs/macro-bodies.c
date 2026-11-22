@@ -54,3 +54,14 @@ void use_clone(SEXP x, SEXP y) { r_attrib_clone_from(x, y); }
 /* A macro that changes a variable of the code it is expanded in. */
 #define NAME_OUT(v) Rf_setAttrib(out, R_NamesSymbol, v)
 SEXP use_name_out(SEXP out, SEXP v) { NAME_OUT(v); return out; }
+
+/* A macro's summary at its calls: the names of a value of class "a" are set,
+   its class is kept. */
+SEXP poke_names_keeps_class(SEXP nms)
+{
+  SEXP l = PROTECT(allocVector(VECSXP, 1));
+  setAttrib(l, R_ClassSymbol, mkString("a"));
+  r_attrib_poke_names(l, nms);
+  UNPROTECT(1);
+  return l;
+}

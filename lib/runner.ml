@@ -507,7 +507,7 @@ let binding_name = function
   | _, PAst.MacroDef (name, _, _) -> PAst.Name.Macro name
   | past -> id (PAst.top_level_unit_name past)
 
-let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=false) ?(convention=None) ?arg_types ?(skip_if_defined=false) visible_name opts (idenv, env, decl)  past =
+let rec infer_def ?(summaries = fun _ -> None) ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=false) ?(convention=None) ?arg_types ?(skip_if_defined=false) visible_name opts (idenv, env, decl)  past =
   let name = PAst.top_level_unit_name past in
   let visible = visible_name name in
   let started = Unix.gettimeofday () in
@@ -531,7 +531,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
          simple C-function inference and priority to already-defined symbols. *)
       List.fold_left
         (fun acc item ->
-          infer_def ?internal_scope ~force_internal_global ~simple_c_fun:true ~skip_if_defined:true (fun _ -> false) opts acc item)
+          infer_def ~summaries ?internal_scope ~force_internal_global ~simple_c_fun:true ~skip_if_defined:true (fun _ -> false) opts acc item)
         (idenv, env, decl)
         items
   | _, PAst.Define (name, value) ->
@@ -721,7 +721,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
         match past with
         | _, PAst.Fundef (_, name, _, _) when recursive && opts.lambda_rec <> None ->
           let self = MVariable.create MVariable.Immut (Some name) in
-          (match PAst.transform ~self {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty; reads = StrMap.empty; labels = PAst.StrSet.empty} past with
+          (match PAst.transform ~self {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty; reads = StrMap.empty; labels = PAst.StrSet.empty; summaries} past with
            | _, _, _, Ast.Noop -> None
            | (_, decl', _, _) as e ->
              let key = binding_name past in
@@ -745,7 +745,7 @@ let rec infer_def ?internal_scope ?(force_internal_global=false) ?(simple_c_fun=
               (fun () -> C_interface.infer_cfun ~typedef_map:decl ret_ty params)
         | _ -> (idenv, env, decl)
       in
-      let e = PAst.transform {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty; reads = StrMap.empty; labels = PAst.StrSet.empty} past in
+      let e = PAst.transform {PAst.id = [idenv]; decl; ctypes = Ast.VarMap.empty; cells = StrMap.empty; reads = StrMap.empty; labels = PAst.StrSet.empty; summaries} past in
       if opts.ast && visible then
         Printf.printf "%s\n" (Ast.show_e e);
       (* Provide a declared-C-signature fallback for Fundefs when [opts] asks
@@ -801,6 +801,7 @@ let run_on_file opts filename idenv env =
   if opts.cst then Parser.print_res cst;
   let past = Parser.to_ast cst in
   let visible_name = make_substring_pred opts.filter in
+  let summaries = Summaries.of_pasts [ (filename, past) ] in
   if opts.past then begin
     let visible_past =
       match opts.filter with
@@ -819,7 +820,7 @@ let run_on_file opts filename idenv env =
   end;
   let idenv, env, _ =
     List.fold_left
-      (infer_def ~internal_scope:filename visible_name opts)
+      (infer_def ~summaries ~internal_scope:filename visible_name opts)
       (idenv, env, Ast.DeclMap.empty)
       past
   in
@@ -853,6 +854,9 @@ let parse_files opts filenames =
 (** Type the already-parsed translation units [pasts] (a [(filename, past)]
     list, as returned by [parse_files]). *)
 let run_on_pasts opts pasts ?entry_points ?(registered = []) idenv env =
+  (* What the package's functions and macros may do to the attributes of the
+     R values given to them (cf. [Summaries]). *)
+  let summaries = Summaries.of_pasts pasts in
   let t_callgraph_start = Unix.gettimeofday () in
   let full_call_graph = Call_graph.of_past_list (List.map snd pasts) in
   let entry_names = match entry_points with
@@ -986,7 +990,7 @@ let run_on_pasts opts pasts ?entry_points ?(registered = []) idenv env =
                   |> Option.value ~default:Idenv.empty
                 in
                 let file_idenv, env, decl =
-                  infer_def ~internal_scope:filename ~force_internal_global:true visible_name opts
+                  infer_def ~summaries ~internal_scope:filename ~force_internal_global:true visible_name opts
                     (file_idenv, env, decl) item
                 in
                 (idenv, env, decl, StrMap.add filename file_idenv internal_idenvs)
@@ -997,13 +1001,13 @@ let run_on_pasts opts pasts ?entry_points ?(registered = []) idenv env =
                   |> Option.value ~default:Idenv.empty
                 in
                 let file_idenv, env, decl =
-                  infer_def ~internal_scope:filename ~force_internal_global:true visible_name opts
+                  infer_def ~summaries ~internal_scope:filename ~force_internal_global:true visible_name opts
                     (file_idenv, env, decl) item
                 in
                 (idenv, env, decl, StrMap.add filename file_idenv internal_idenvs)
             | _ ->
                 let idenv, env, decl =
-                  infer_def ~internal_scope:filename visible_name opts
+                  infer_def ~summaries ~internal_scope:filename visible_name opts
                     (idenv, env, decl) item
                 in
                 (idenv, env, decl, internal_idenvs))
@@ -1049,7 +1053,7 @@ let run_on_pasts opts pasts ?entry_points ?(registered = []) idenv env =
           Idenv.union (fun _ local _global -> Some local) file_idenv idenv
         in
         let idenv', env, decl =
-          infer_def ~internal_scope:filename ~convention ?arg_types visible_name opts
+          infer_def ~summaries ~internal_scope:filename ~convention ?arg_types visible_name opts
             (idenv_for_file, env, decl) item
         in
         let idenv =

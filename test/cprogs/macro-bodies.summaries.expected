@@ -21,3 +21,4 @@ use_zap (x: class)
 use_clone (x: class, y: none)
 macro NAME_OUT (v: escapes) free: out: attrs
 use_name_out (out: attrs (returned), v: escapes)
+poke_names_keeps_class (nms: escapes)

@@ -49,3 +49,5 @@ Creating fresh variable: NAME_OUT
 use_name_out:
 untypeable: unbound variable
 name: NAME_OUT
+poke_names_keeps_class: [any_sexp] -> { _0: null }<a>
+

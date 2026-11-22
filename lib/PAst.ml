@@ -287,6 +287,20 @@ module NameMap = Map.Make (Name)
     that survive across the whole translation unit; new frames are pushed
     on entry to a [Block] (and to a parameter scope at function entry) and
     fall out naturally when [transform]/[aux_e] returns. *)
+(* What a call of a function or a function-like macro of the package may do
+   to the R values given to it, per parameter (computed by [Summaries]):
+   nothing, change attributes other than the class, or also the class (or
+   anything, the value escaping). [returns] says whether the result may be
+   that value itself; [free] widens the variables of the code a macro is
+   expanded in that its body changes. *)
+type widening = Keep | Widen_attrs | Widen_class
+
+type callee_summary = {
+  widenings : widening list;
+  returns : bool list;
+  free : (string * widening) list;
+}
+
 type env = {
   id: Variable.t NameMap.t list;
   decl: Ast.ctype Ast.DeclMap.t;
@@ -300,6 +314,9 @@ type env = {
   reads: ((int * int) option * bool) list StrMap.t;
     (** Where the function being lowered reads each name (see
         [read_counts]). *)
+  summaries: Name.t -> callee_summary option;
+    (** The summaries of the package's functions and macros. Without one, a
+        call widens all the R values given to it. *)
 }
 
 (* [resolve_ctype] expands Typerefs and empty-struct forward references by
@@ -717,7 +734,10 @@ let rec label_blocks stmts =
    - it is passed to a function that is not from types/base.ty: one of the
      package, a macro, an unknown one, or one called through a pointer.
    Its variable is then widened ([Ast.WidenAttrs]): its attributes and
-   classes are forgotten, as they may change behind it. The functions of
+   classes are forgotten, as they may change behind it. A function or macro
+   of the package with a summary ([env.summaries]) widens each argument only
+   as far as its summary says, and one that returns its argument is a copy
+   of it. The functions of
    types/base.ty only read their arguments, but the setters and the
    [storing_callees]. Only the variables declared [SEXP] are concerned. *)
 
@@ -764,29 +784,68 @@ let sexp_var env s =
                 && Ast.VarMap.find_opt v env.ctypes = Some Ast.SEXP -> Some v
   | _ -> None
 
-(* The [SEXP] variable the expression [e] denotes, through the protection
-   functions and casts. *)
-let rec denoted_sexp_var env (_, e) =
-  match e with
-  | Id s -> sexp_var env s
-  | Call ((_, Id w), x :: _) | MacroCall (w, x :: _) when StrSet.mem w protection_callees ->
-    denoted_sexp_var env x
-  | Cast (_, x) | CoerceNarrow (_, x) -> denoted_sexp_var env x
+(* The position of the only parameter a callee's summary says it may
+   return, if there is one. *)
+let returned_param s =
+  match List.mapi (fun i r -> (i, r)) s.returns |> List.filter snd with
+  | [ (i, _) ] -> Some i
   | _ -> None
 
-(* [v = widen(v)]. *)
-let widen_stmt env v =
-  fresh_e env (Ast.VarAssign (v, fresh_e env (Ast.WidenAttrs (fresh_e env (Ast.Id v)))))
+(* The summary of the callee [name] of the package, if it has one: not for
+   the protection functions, nor a local variable (a function pointer). *)
+let summary_of env name =
+  match name with
+  | Name.Ident f when StrSet.mem f protection_callees -> None
+  | Name.Ident _ when (match lookup_in_frames name env.id with
+                       | Some v -> Ast.VarMap.mem v env.ctypes
+                       | None -> false) -> None
+  | _ -> env.summaries name
 
-(* [e], after which the variables [vs] are widened; its value is [e]'s. *)
-let widen_after env vs e =
-  match List.sort_uniq compare vs with
+(* The variable read (an [Id]) whose [SEXP] value the expression [e] is,
+   through the protection functions, casts, and the functions and macros of
+   the package that return their argument. *)
+let rec denoted_read env ((_, e') as e) =
+  let through name args =
+    match summary_of env name with
+    | Some s -> Option.bind (returned_param s) (fun i -> Option.bind (List.nth_opt args i) (denoted_read env))
+    | None -> None
+  in
+  match e' with
+  | Id s -> if Option.is_some (sexp_var env s) then Some e else None
+  | Call ((_, Id w), x :: _) | MacroCall (w, x :: _) when StrSet.mem w protection_callees ->
+    denoted_read env x
+  | Cast (_, x) | CoerceNarrow (_, x) -> denoted_read env x
+  | Call ((_, Id w), args) -> through (Name.Ident w) args
+  | MacroCall (w, args) -> through (Name.Macro w) args
+  | _ -> None
+
+(* The [SEXP] variable the expression [e] denotes (cf. [denoted_read]). *)
+let denoted_sexp_var env e =
+  match denoted_read env e with
+  | Some (_, Id s) -> sexp_var env s
+  | _ -> None
+
+(* [v = widen(v)], forgetting the classes too if [classes]. *)
+let widen_stmt ?(classes = true) env v =
+  fresh_e env (Ast.VarAssign (v, fresh_e env (Ast.WidenAttrs (classes, fresh_e env (Ast.Id v)))))
+
+(* [e], after which the variables [vs] are widened (with their classes, or
+   not: [(v, classes)]; a variable listed twice gets the larger one); its
+   value is [e]'s. *)
+let widen_after_levels env vs e =
+  let vs =
+    List.sort_uniq compare (List.map fst vs)
+    |> List.map (fun v -> (v, List.exists (fun (w, c) -> w == v && c) vs)) in
+  match vs with
   | [] -> e
   | vs ->
     let result = MVariable.create MVariable.Immut (Some "_call") in
-    let after = List.fold_right (fun v rest -> Ast.Seq (widen_stmt env v, fresh_e env rest))
-        vs (Ast.Id result) in
+    let after = List.fold_right (fun (v, classes) rest ->
+        Ast.Seq (widen_stmt ~classes env v, fresh_e env rest)) vs (Ast.Id result) in
     Ast.Let (result, fresh_e env e, fresh_e env after)
+
+(* [e], after which the variables [vs] are widened; its value is [e]'s. *)
+let widen_after env vs e = widen_after_levels env (List.map (fun v -> (v, true)) vs) e
 
 (* [e], before which the variables [vs] are widened. *)
 let widen_before env vs e =
@@ -799,9 +858,37 @@ let is_base_function env f =
   Option.is_none (lookup_in_frames (Name.Ident f) env.id)
   && Option.is_some (lookup_binding env f)
 
+(* The [SEXP] variables to widen after a call with the arguments [args] of a
+   function or macro of the package with the summary [s] (all of them, with
+   their classes, without one), with whether their classes are widened. A
+   returned argument is followed as a copy (cf. [denoted_read]) when it is
+   the only one; otherwise it is widened. *)
+let widened_by_call env s args =
+  match s with
+  | None -> List.filter_map (denoted_sexp_var env) args |> List.map (fun v -> (v, true))
+  | Some s ->
+    let followed = returned_param s in
+    let level w = match w with
+      | Keep -> None | Widen_attrs -> Some false | Widen_class -> Some true in
+    let of_arg i a =
+      match denoted_sexp_var env a with
+      | None -> None
+      | Some v ->
+        let w = Option.value ~default:Widen_class (List.nth_opt s.widenings i) in
+        let w = if List.nth_opt s.returns i = Some true && followed <> Some i then Widen_class else w in
+        Option.map (fun c -> (v, c)) (level w)
+    in
+    List.concat
+      [ List.filter_map Fun.id (List.mapi of_arg args);
+        List.filter_map (fun (n, w) ->
+            match sexp_var env n, level w with
+            | Some v, Some c -> Some (v, c)
+            | _ -> None) s.free ]
+
 (* The [SEXP] variables of the arguments [args] of a call of [f] that escape:
    [`Before vs], to widen before the call (stored by it), or [`After vs]
-   (passed to code that is not followed). *)
+   (passed to code that is not followed, or to a function of the package,
+   as its summary says), with whether their classes are widened. *)
 let escaping_args env f args =
   let vars_from k =
     List.filteri (fun i _ -> i >= k) args |> List.filter_map (denoted_sexp_var env) in
@@ -811,19 +898,16 @@ let escaping_args env f args =
   | (_, Id name) when List.mem_assoc name storing_callees ->
     `Before (vars_from (List.assoc name storing_callees))
   | (_, Id name) when is_base_function env name -> `Before []
-  | _ -> `After (vars_from 0)
+  | (_, Id name) -> `After (widened_by_call env (summary_of env (Name.Ident name)) args)
+  | _ -> `After (List.map (fun v -> (v, true)) (vars_from 0))
 
 (* Whether the read of the variable [v] in the expression [e] (a copy of it)
    is its last one in the function: no read of [v] in a loop (nor this one),
    and none after this one in the source. *)
 let is_last_read env v e =
-  let rec read_pos (pos, e) =
-    match e with
-    | Id _ -> pos
-    | Call (_, x :: _) | MacroCall (_, x :: _) | Cast (_, x) | CoerceNarrow (_, x) -> read_pos x
-    | _ -> Mlsem.Common.Position.dummy
-  in
-  let here = read_pos e in
+  let here = match denoted_read env e with
+    | Some (pos, _) -> pos
+    | None -> Mlsem.Common.Position.dummy in
   if here = Mlsem.Common.Position.dummy then false else
   let p = Mlsem.Common.Position.start_of_position here in
   let here = (Mlsem.Common.Position.line p, Mlsem.Common.Position.column p) in
@@ -885,7 +969,7 @@ let rec aux_e env (pos,e) =
          (* The R values given to a macro of the package escape, but to the
             protection ones. *)
          if StrSet.mem name protection_callees then call
-         else widen_after env (List.filter_map (denoted_sexp_var env) args) call
+         else widen_after_levels env (widened_by_call env (summary_of env (Name.Macro name)) args) call
        | None -> process_call env (pos, Id name) args)
   | If (cond, then_, else_) -> 
       Ast.If (aux_e env cond, aux_e env then_, Option.map (aux_e env) else_)
@@ -1324,7 +1408,7 @@ and process_call env f args =
   let e =
     match escaping_args env f args with
     | `Before vs -> widen_before env (List.filter (fun v -> not (List.memq v addressed_vars)) vs) e
-    | `After vs -> widen_after env (List.filter (fun v -> not (List.memq v addressed_vars)) vs) e
+    | `After vs -> widen_after_levels env (List.filter (fun (v, _) -> not (List.memq v addressed_vars)) vs) e
   in
   if addressed = [] then e
   else

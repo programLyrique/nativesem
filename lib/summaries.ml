@@ -374,3 +374,19 @@ let print_for_files filenames =
     |> StrSet.of_list
   in
   print ~visible:(fun n -> StrSet.mem n own) pasts t
+
+(* The summaries [t] as the lowering looks them up ([PAst.env.summaries]). *)
+let callees (t : t) (name : Name.t) : callee_summary option =
+  let key = match name with Name.Ident n -> (Fun, n) | Name.Macro n -> (Macro, n) in
+  let widening = function
+    | Untouched -> Keep
+    | Attrs -> Widen_attrs
+    | Class | Escapes -> Widen_class
+  in
+  Option.map (fun (s : summary) ->
+      { widenings = List.map widening s.levels; returns = s.returned;
+        free = List.map (fun (n, l) -> (n, widening l)) s.free })
+    (KeyMap.find_opt key t)
+
+(* The summaries of the definitions of the C files [pasts], to look up. *)
+let of_pasts pasts = callees (compute ~is_api pasts)

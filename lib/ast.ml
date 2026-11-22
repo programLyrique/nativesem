@@ -124,9 +124,11 @@ type e' =
 | AnyValue of ctype
   (* Any value of a variable declared with this type: what a callee may have
      written through its address ([PAst.process_call]). *)
-| WidenAttrs of e
-  (* The value of [e], its attributes and classes forgotten: an R value code
-     whose effect is not followed may have changed ([PAst]'s escapes). *)
+| WidenAttrs of bool * e
+  (* The value of [e], its attributes forgotten, and its classes too if the
+     flag is set: an R value code whose effect is not followed may have
+     changed ([PAst]'s escapes, and the summaries of the package's
+     functions). *)
   (* Implicit narrowing conversion (C's [void* -> T*] at a typed pointer
      initialization). Lowers to [TypeCast] (intersecting cast: result is
      [target & source]) rather than [Cast]'s [TypeCoerce] (replacement), so it
@@ -786,10 +788,11 @@ let rec aux_e (eid, _decl, vars, e) =
            code after the label is reached; a [Ret] without a value would just
            end the path. *)
         A.Ret (A.BOther (label_id l), Some (Eid.unique (), A.Value (GTy.mk Rstt.Cenums.void)))
-    | WidenAttrs e ->
+    | WidenAttrs (classes, e) ->
         A.Constructor
-          (SA.CCustom { cname="widenAttrs"; cgen=true;
-                        cdom=Defs.widen_cdom; cons=Defs.widen_first_cons },
+          (SA.CCustom { cname=(if classes then "widenAttrs" else "widenAttrsKeepClass"); cgen=true;
+                        cdom=Defs.widen_cdom;
+                        cons=(if classes then Defs.widen_first_cons else Defs.widen_attrs_cons) },
            [aux_e e])
     | CoerceNarrow (SEXP, e) ->
         (* An R value ([r_obj*], which [PAst] resolves to [SEXP]) is never
@@ -944,7 +947,7 @@ let rec aux_e (eid, _decl, vars, e) =
       | TyCheck (e, ty) -> TyCheck (aux e, ty)
       | Cast (ty, e) -> Cast (ty, aux e)
       | CoerceNarrow (ty, e) -> CoerceNarrow (ty, aux e)
-      | WidenAttrs e -> WidenAttrs (aux e)
+      | WidenAttrs (c, e) -> WidenAttrs (c, aux e)
       | LabelBlock (l, e) -> LabelBlock (l, aux e)
       | GotoLabel l -> GotoLabel l
       | AnyValue ty -> AnyValue ty
@@ -1222,9 +1225,9 @@ let rec aux_e (eid, _decl, vars, e) =
           let e1', env1, _ = aux e1 env in
           ((id, decl, env, CoerceNarrow (ty, e1')), env1, None)
 
-      | WidenAttrs e1 ->
+      | WidenAttrs (c, e1) ->
           let e1', env1, _ = aux e1 env in
-          ((id, decl, env, WidenAttrs e1'), env1, None)
+          ((id, decl, env, WidenAttrs (c, e1')), env1, None)
 
       | LabelBlock (l, body) ->
           (* The label is reached from any [goto] in the block, with the

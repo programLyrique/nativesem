@@ -140,3 +140,29 @@ void sum_pointer(SEXP x, void (*f)(SEXP)) { f(x); }
 void sum_even(SEXP x, int n);
 void sum_odd(SEXP x, int n) { if (n == 0) classgets(x, R_NilValue); else sum_even(x, n - 1); }
 void sum_even(SEXP x, int n) { if (n > 0) sum_odd(x, n - 1); }
+
+/* ===== The summaries at the calls: a value of class "a", given to the
+   functions above, is widened only as far as their summary says. ===== */
+
+static SEXP classed(void)
+{
+  SEXP l = PROTECT(allocVector(VECSXP, 1));
+  setAttrib(l, R_ClassSymbol, mkString("a"));
+  UNPROTECT(1);
+  return l;
+}
+
+/* none: kept. */
+SEXP after_reads(void) { SEXP l = PROTECT(classed()); sum_reads(l); UNPROTECT(1); return l; }
+
+/* attrs: the class is kept, the other attributes are forgotten. */
+SEXP after_names(void) { SEXP l = PROTECT(classed()); sum_names(l, R_NilValue); UNPROTECT(1); return l; }
+
+/* class, escapes: forgotten. */
+SEXP after_class(void) { SEXP l = PROTECT(classed()); sum_class(l); UNPROTECT(1); return l; }
+SEXP after_stored(SEXP x) { SEXP l = PROTECT(classed()); sum_stored(l, x); UNPROTECT(1); return l; }
+
+/* A callee that returns its argument: a copy (both forgotten), or a renaming
+   when the argument is not read after (kept). */
+SEXP after_returned_copy(void) { SEXP l = PROTECT(classed()); SEXP y = sum_returns(l); UNPROTECT(1); return l; }
+SEXP after_returned_renaming(void) { SEXP l = PROTECT(classed()); SEXP y = sum_returns(l); UNPROTECT(1); return y; }

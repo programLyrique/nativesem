@@ -422,6 +422,12 @@ let widen_first_cons tys =
   | x :: _ -> widen ~classes:true x
   | [] -> assert false
 
+(* [Ast.WidenAttrs] keeping the classes: [x]'s other attributes are unknown. *)
+let widen_attrs_cons tys =
+  match tys with
+  | x :: _ -> widen ~classes:false x
+  | [] -> assert false
+
 (* [DUPLICATE_ATTRIB(to, from)], [SHALLOW_DUPLICATE_ATTRIB(to, from)]: [to]
    keeps its content and takes [from]'s classes and attributes. When either
    may have no attributes at all (e.g. NULL), [to]'s are unknown. *)

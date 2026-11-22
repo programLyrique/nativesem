@@ -14,7 +14,7 @@ stored_in_list: () -> { _0: null }
 
 stored_in_struct: () -> { _0: null }
 
-passed: () -> { _0: null }
+passed: () -> { _0: null }<a> with {  }
 
 addressed: () -> { _0: null }
 
@@ -53,4 +53,18 @@ sum_even: [any_sexp, c_int_na] --> c_void
 sum_odd: [any_sexp, c_false] | [any_sexp, c_int_na \ c_false] -> ()
 
 sum_even: [any_sexp, c(1..)] | [any_sexp, c_int_na \ c(1..)] -> ()
+
+classed: () -> { _0: null }<a> with {  }
+
+after_reads: () -> { _0: null }<a> with {  }
+
+after_names: () -> { _0: null }<a>
+
+after_class: () -> { _0: null }
+
+after_stored: [list] -> { _0: null }
+
+after_returned_copy: () -> { _0: null }
+
+after_returned_renaming: () -> { _0: null }<a> with {  }
 
