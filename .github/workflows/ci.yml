@@ -17,7 +17,7 @@ jobs:
       # Rsem's opam file tracks (#main): tyr builds NativeSem and Rsem in one
       # workspace, so the two must agree, and the Dockerfile pins the same.
       SSTT_REF: 51f2e83a4e35846167fea1b301353b57e348075c
-      MLSEM_REF: 3112df3a4253935e37b7e0fb3424899807f082c8
+      MLSEM_REF: 952ba1619da539a9b8bb228638a6de887fdbb936
       RSTT_REF: d8e03198b72409cea0035746286e8a7b966b9537
     steps:
       # Checkout repository
@@ -27,7 +27,7 @@ jobs:
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: 5.3.0
+          ocaml-compiler: 5.5.0
           dune-cache: true # Enables caching for faster builds
 
       - name: Configure opam networking

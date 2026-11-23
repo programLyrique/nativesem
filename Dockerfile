@@ -1,5 +1,5 @@
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
-FROM ocaml/opam:ubuntu-22.04-ocaml-5.3 AS builder
+FROM ocaml/opam:ubuntu-22.04-ocaml-5.5 AS builder
 
 USER root
 RUN apt-get update && apt-get install -y \
@@ -24,7 +24,7 @@ RUN opam update --yes && eval $(opam env) && \
 # vector representation (Vec.Vector / Vec.Scalar); the types/*.ty files and
 # lib/defs.ml are written against it. Keep in sync with .github/workflows/ci.yml.
 ARG SSTT_REF=51f2e83a4e35846167fea1b301353b57e348075c
-ARG MLSEM_REF=3112df3a4253935e37b7e0fb3424899807f082c8
+ARG MLSEM_REF=952ba1619da539a9b8bb228638a6de887fdbb936
 ARG RSTT_REF=a021f9e654dc103be5948565c10fce67f0f32715
 
 # sstt, MLsem, and RSTT are now public — no PAT needed.
