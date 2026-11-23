@@ -19,6 +19,10 @@ jobs:
       SSTT_REF: 51f2e83a4e35846167fea1b301353b57e348075c
       MLSEM_REF: 952ba1619da539a9b8bb228638a6de887fdbb936
       RSTT_REF: d8e03198b72409cea0035746286e8a7b966b9537
+      # bisect_ppx's releases do not build with OCaml 5.5 (they need
+      # ppxlib < 0.36): a fork with its PR #448 adapted to OCaml 5.5, as in
+      # tyr's Dockerfile.
+      BISECT_PPX_REF: 984a92a79e7c97563f46caf268a9ce01bc48c3af
     steps:
       # Checkout repository
       - uses: actions/checkout@v6
@@ -93,9 +97,12 @@ jobs:
           opam pin add rstt-repl git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF} --yes --no-action --ignore-pin-depends
           opam pin add rstt-bin  git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF} --yes --no-action --ignore-pin-depends
 
-      # FIX: Pin cmdliner to 1.0.4 to fix "Unbound value Term.info" error
+      # FIX: cmdliner < 2, to fix "Unbound value Term.info" error (Term.info is
+      # gone in cmdliner 2). 1.3.0 still has it, and the bisect_ppx pinned below
+      # needs cmdliner >= 1.3.0. Pinned, so that installing bisect_ppx does not
+      # upgrade it.
       - name: Pin cmdliner version
-        run: opam install cmdliner.1.0.4 --yes
+        run: opam pin add cmdliner 1.3.0 --yes
 
       # Install r-parser dependency
       - name: Clone r-parser
@@ -137,7 +144,9 @@ jobs:
 
       # Install bisect_ppx
       - name: Install bisect_ppx
-        run: opam install bisect_ppx --yes
+        run: |
+          opam pin add bisect_ppx "git+https://github.com/Kakadu/bisect_ppx_ng.git#${BISECT_PPX_REF}" --yes --no-action
+          opam install bisect_ppx --yes
 
       # Run tests
       - name: Build and run tests
