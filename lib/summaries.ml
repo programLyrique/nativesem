@@ -166,8 +166,8 @@ let analyse ~resolve ~is_api ~typedefs ~is_macro params body =
     | Id s -> lookup s
     | Cast (_, x) | CoerceNarrow (_, x) | Comma (_, x) | VarAssign (_, x) -> denotes x
     | Ite (_, a, b) -> TSet.union (denotes a) (denotes b)
-    | Call ((_, Id f), args) -> returned_by (resolve Fun f) f args
-    | MacroCall (m, args) -> returned_by (resolve Macro m) m args
+    | Call ((_, Id f), args) -> let c, f = resolve Fun f in returned_by c f args
+    | MacroCall (m, args) -> let c, m = resolve Macro m in returned_by c m args
     | _ -> TSet.empty
   and returned_by callee name args =
     match callee with
@@ -219,7 +219,7 @@ let analyse ~resolve ~is_api ~typedefs ~is_macro params body =
           | Api _ ->
             (match setter_target name args, List.assoc_opt name storing_callees with
              | Some (j, l), _ when j = i -> l
-             | _, Some k when i >= k -> Escapes
+             | _, Some stored when stored i -> Escapes
              | _ -> Untouched)
           | Unknown -> Escapes
         in
@@ -231,9 +231,9 @@ let analyse ~resolve ~is_api ~typedefs ~is_macro params body =
   in
   let rec walk ((_, e') as e) =
     (match e' with
-     | Call ((_, Id f), args) -> call (resolve Fun f) f args
+     | Call ((_, Id f), args) -> let c, f = resolve Fun f in call c f args
      | Call (_, args) -> call Unknown "" args
-     | MacroCall (m, args) -> call (resolve Macro m) m args
+     | MacroCall (m, args) -> let c, m = resolve Macro m in call c m args
      | VarAssign ((_, Id s), _) when StrSet.mem s locals -> ()
      | VarAssign (_, rhs) -> touch Escapes (denotes rhs)
      | Unop ("&", x) -> touch Escapes (denotes x)
@@ -305,14 +305,28 @@ let compute ~is_api pasts : t =
   in
   let conflicting key = match KeyMap.find_opt key arities with Some (_ :: _ :: _) -> true | _ -> false in
   let defs = List.filter (fun (key, _) -> not (conflicting key)) defs in
+  let known t kind name =
+    KeyMap.mem (kind, name) t || conflicting (kind, name)
+    || (kind = Fun && (is_api name || StrSet.mem name protection_callees))
+  in
+  (* The callee [name] denotes, with its name through the aliases of
+     object-like macros ([#define NAME TARGET], when [TARGET] is known, as
+     the lowering resolves them). *)
   let resolve t kind name =
-    if conflicting (kind, name) then Unknown else
-    match KeyMap.find_opt (kind, name) t with
-    | Some s -> Summarized s
-    | None ->
-      if is_api name || StrSet.mem name protection_callees || name = "[]" || name = "sizeof"
-      then Api name
-      else Unknown
+    let name =
+      if kind = Macro then name else
+      let target = resolve_alias name in
+      if target <> name && known t Fun target then target else name in
+    let callee =
+      if conflicting (kind, name) then Unknown else
+      match KeyMap.find_opt (kind, name) t with
+      | Some s -> Summarized s
+      | None ->
+        if is_api name || StrSet.mem name protection_callees || name = "[]" || name = "sizeof"
+        then Api name
+        else Unknown
+    in
+    (callee, name)
   in
   let step t =
     List.fold_left (fun acc (key, (params, body)) ->

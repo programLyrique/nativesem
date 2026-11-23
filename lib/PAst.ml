@@ -482,18 +482,19 @@ let is_block_local env str =
    translated. *)
 let variadic_arity : (Name.t, int) Hashtbl.t = Hashtbl.create 64
 
+(* The name [str] denotes, through identifier-alias macros ([#define NAME
+   TARGET]). Keep the resolution only if [TARGET] is itself bound; otherwise
+   the alias gives us nothing and we preserve the original name so inference
+   sees the same fresh variable as before aliases were supported. *)
+let resolved_name env str =
+  let resolved = resolve_alias str in
+  if resolved = str then str
+  else match lookup_binding env resolved with
+    | Some _ -> resolved
+    | None -> str
+
 let var env str =
-  (* Resolve identifier-alias macros ([#define NAME TARGET]) before looking
-     up. Keep the resolution only if [TARGET] is itself bound; otherwise the
-     alias gives us nothing and we preserve the original name so inference
-     sees the same fresh variable as before aliases were supported. *)
-  let effective =
-    let resolved = resolve_alias str in
-    if resolved = str then str
-    else match lookup_binding env resolved with
-      | Some _ -> resolved
-      | None -> str
-  in
+  let effective = resolved_name env str in
   match lookup_binding env effective with
   | Some v -> v
   | None ->
@@ -539,7 +540,8 @@ let fresh_e env expr =
    variants because the call site may use either name. *)
 let sexptype_first_arg_callees =
   StrSet.of_list
-    ["allocVector"; "Rf_allocVector"; "R_allocResizableVector"]
+    ["allocVector"; "Rf_allocVector"; "R_allocResizableVector";
+     "allocMatrix"; "Rf_allocMatrix"; "allocArray"; "Rf_allocArray"]
 
 (* Lookup hook for resolving an identifier to its integer value (typically
    an enum constant). [Const_eval] installs the real implementation at
@@ -753,20 +755,26 @@ let protection_callees =
                       "KEEP"; "KEEP_N"; "KEEP2"; "KEEP_AT"; "KEEP_HERE"; "FREE"; "PROTECT_N" ])
 
 (* The functions of types/base.ty that store an argument into another object
-   (from the given position on): it escapes. *)
+   (at the positions the predicate accepts): it escapes. *)
 let storing_callees =
-  List.map (fun n -> (n, 2)) [ "SET_VECTOR_ELT" ]
-  @ List.map (fun n -> (n, 1))
-      ([ "SETCAR"; "SETCDR"; "SETCADR"; "SETCADDR"; "SETCADDDR"; "SET_TAG";
-         "R_MakeExternalPtr"; "R_SetExternalPtrProtected" ]
-       @ with_rf [ "defineVar"; "setVar" ])
-  @ List.map (fun n -> (n, 0))
-      ([ "R_PreserveObject" ]
+  let from k i = i >= k and at l i = List.mem i l in
+  List.map (fun n -> (n, from 2)) [ "SET_VECTOR_ELT" ]
+  @ List.map (fun n -> (n, from 1))
+      [ "SETCAR"; "SETCDR"; "SETCADR"; "SETCADDR"; "SETCADDDR"; "SET_TAG";
+        "R_MakeExternalPtr"; "R_SetExternalPtrProtected"; "R_MakeExternalPtrFn";
+        "R_set_altrep_data1"; "R_set_altrep_data2" ]
+  (* A binding stores its value (an expression, a function, the environment
+     of a promise), not its symbol nor the environment it is made in. *)
+  @ List.map (fun n -> (n, at [ 1 ]))
+      ([ "R_MakeActiveBinding" ] @ with_rf [ "defineVar"; "setVar" ])
+  @ List.map (fun n -> (n, at [ 1; 2 ])) [ "R_MakeDelayedBinding"; "R_MakeForcedBinding" ]
+  @ List.map (fun n -> (n, from 0))
+      ([ "R_PreserveObject"; "R_MakeWeakRef" ]
        @ with_rf [ "cons"; "lcons"; "list1"; "list2"; "list3"; "list4"; "list5";
                    "lang1"; "lang2"; "lang3"; "lang4"; "lang5"; "lang6" ])
   (* The value given to a setter of attributes is stored into the one it
      changes. *)
-  @ List.map (fun n -> (n, 1))
+  @ List.map (fun n -> (n, from 1))
       (with_rf [ "setAttrib"; "classgets"; "namesgets"; "dimgets"; "dimnamesgets" ]
        @ [ "SET_ATTRIB" ])
 
@@ -794,6 +802,9 @@ let returned_param s =
 (* The summary of the callee [name] of the package, if it has one: not for
    the protection functions, nor a local variable (a function pointer). *)
 let summary_of env name =
+  let name = match name with
+    | Name.Ident f -> Name.Ident (resolved_name env f)
+    | Name.Macro _ -> name in
   match name with
   | Name.Ident f when StrSet.mem f protection_callees -> None
   | Name.Ident _ when (match lookup_in_frames name env.id with
@@ -812,7 +823,9 @@ let rec denoted_read env ((_, e') as e) =
   in
   match e' with
   | Id s -> if Option.is_some (sexp_var env s) then Some e else None
-  | Call ((_, Id w), x :: _) | MacroCall (w, x :: _) when StrSet.mem w protection_callees ->
+  | Call ((_, Id w), x :: _) when StrSet.mem (resolved_name env w) protection_callees ->
+    denoted_read env x
+  | MacroCall (w, x :: _) when StrSet.mem w protection_callees ->
     denoted_read env x
   | Cast (_, x) | CoerceNarrow (_, x) -> denoted_read env x
   | Call ((_, Id w), args) -> through (Name.Ident w) args
@@ -890,13 +903,17 @@ let widened_by_call env s args =
    (passed to code that is not followed, or to a function of the package,
    as its summary says), with whether their classes are widened. *)
 let escaping_args env f args =
+  let f = match f with
+    | (pos, Id name) -> (pos, Id (resolved_name env name))
+    | _ -> f in
   let vars_from k =
     List.filteri (fun i _ -> i >= k) args |> List.filter_map (denoted_sexp_var env) in
   match f with
   | (_, Id name) when StrSet.mem name protection_callees || StrSet.mem name copying_setters ->
     `Before []
   | (_, Id name) when List.mem_assoc name storing_callees ->
-    `Before (vars_from (List.assoc name storing_callees))
+    let stored = List.assoc name storing_callees in
+    `Before (List.filteri (fun i _ -> stored i) args |> List.filter_map (denoted_sexp_var env))
   | (_, Id name) when is_base_function env name -> `Before []
   | (_, Id name) -> `After (widened_by_call env (summary_of env (Name.Ident name)) args)
   | _ -> `After (List.map (fun v -> (v, true)) (vars_from 0))

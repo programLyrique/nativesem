@@ -225,6 +225,75 @@ vmaxget: [] --> *any
 Rf_charIsASCII: [p(CHR)] --> c_bool
 R_new_custom_connection: [c_string, c_string, c_string, *any] --> any_sexp
 
+// R API: functions the packages of the dashboard call, which were unbound:
+// a call to an unbound function counts as unknown code, which may change
+// the attributes of the R values given to it (cf. PAst's escapes and
+// Summaries). None of these changes attributes; the ones that store an R
+// value are in PAst's [storing_callees]. Those that R's headers rename with
+// a macro ([#define isNull Rf_isNull]) are under their [Rf_] name only: a
+// package reaches them through the macro, and a C function of the same name
+// (without R's headers) is left alone.
+RAW_RO: [v(RAW)] --> *c_int
+R_altrep_data1: [any_sexp] --> any_sexp
+R_set_altrep_data1: [any_sexp, any_sexp] --> c_void
+R_set_altrep_data2: [any_sexp, any_sexp] --> c_void
+CAAR: [lang] --> any_sexp
+CDAR: [lang] --> any_sexp
+CADDR: [lang] --> any_sexp
+CADDDR: [lang] --> any_sexp
+SETCADR: [lang, any_sexp] --> any_sexp
+SETCADDR: [lang, any_sexp] --> any_sexp
+SETCADDDR: [lang, any_sexp] --> any_sexp
+Rf_list3: [any_sexp, any_sexp, any_sexp] --> lang
+Rf_list4: [any_sexp, any_sexp, any_sexp, any_sexp] --> lang
+Rf_list5: [any_sexp, any_sexp, any_sexp, any_sexp, any_sexp] --> lang
+Rf_lang5: [any_sexp, any_sexp, any_sexp, any_sexp, any_sexp] --> lang
+Rf_lang6: [any_sexp, any_sexp, any_sexp, any_sexp, any_sexp, any_sexp] --> lang
+PRENV: [any_sexp] --> any_sexp
+PRCODE: [any_sexp] --> any_sexp
+PREXPR: [any_sexp] --> any_sexp
+R_PromiseExpr: [any_sexp] --> any_sexp
+Rf_isNull: ([null] --> c_true) & ([any_sexp \ null] --> c_false)
+Rf_isNumeric: [any_sexp] --> c_bool
+R_compute_identical: [any_sexp, any_sexp, c_int] --> c_bool
+Rf_installTrChar: [p(CHR)] --> sym
+Rf_str2type: [c_string] --> c_int
+Rf_ScalarRaw: [c_int] --> raw1<> with {}
+Rf_ScalarComplex: [any] --> CLX1<> with {}
+Rf_xlengthgets: [vec | list | lang, c_int] --> any_sexp
+Rf_allocMatrix: (['a & prim, c_int, c_int] --> v('a)<> with { dim: INT }) & ([list, c_int, c_int] --> list<> with { dim: INT })
+Rf_allocArray: (['a & prim, INT] --> v('a)<> with { dim: INT }) & ([list, INT] --> list<> with { dim: INT })
+MAYBE_SHARED: [any_sexp] --> c_int
+NAMED: [any_sexp] --> c_int
+R_isResizable: [any_sexp] --> c_bool
+R_lsInternal: [env, c_int] --> CHR<> with {}
+R_lsInternal3: [env, c_int, c_int] --> CHR<> with {}
+R_envSymbols: [env] --> any_sexp
+R_removeVarFromFrame: [sym, env] --> c_void
+R_MakeActiveBinding: [sym, any_sexp, env] --> c_void
+R_MakeDelayedBinding: [sym, any_sexp, env, env] --> c_void
+R_MakeForcedBinding: [sym, any_sexp, any_sexp, env] --> c_void
+R_MakeMissingBinding: [sym, env] --> c_void
+R_ActiveBindingFunction: [sym, env] --> any_sexp
+R_DelayedBindingExpression: [sym, env] --> any_sexp
+R_DelayedBindingEnvironment: [sym, env] --> any_sexp
+R_ForcedBindingExpression: [sym, env] --> any_sexp
+R_SetExternalPtrProtected: [externalptr, any_sexp] --> c_void
+R_ExternalPtrAddrFn: [externalptr] --> any
+R_MakeExternalPtrFn: [any, any_sexp, any_sexp] --> externalptr
+R_MakeWeakRef: [any_sexp, any_sexp, any_sexp, c_int] --> any_sexp
+R_WeakRefKey: [any_sexp] --> any_sexp
+R_WeakRefValue: [any_sexp] --> any_sexp
+R_RegisterCCallable: [c_string, c_string, any] --> c_void
+REprintf: any --> c_void // variadic
+Rf_warning: any --> c_void // variadic
+Rf_warningcall_immediate: any --> c_void // variadic
+R_ProcessEvents: [] --> c_void
+R_ExpandFileName: [c_string] --> c_string
+vmaxset: [any] --> c_void
+Rf_fmax2: [c_double, c_double] --> c_double
+Rf_fmin2: [c_double, c_double] --> c_double
+
 // Casts
 // NA_LOGICAL for NA or a value that does not convert.
 asLogical: [any_sexp] --> c_lgl

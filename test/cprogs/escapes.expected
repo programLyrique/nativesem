@@ -68,3 +68,15 @@ after_returned_copy: () -> { _0: null }
 
 after_returned_renaming: () -> { _0: null }<a> with {  }
 
+api_reads: [raw] -> c_int
+
+api_reads_alias: ([null] -> c_true) & ([p(CHR) | sym | attr_any] -> c_false)
+
+api_stores: [sym, any_sexp, env] -> ()
+
+after_api_read: () -> { _0: null }<a> with {  }
+
+after_api_alias: () -> { _0: null }<a> with {  }
+
+after_api_store: [sym, env] -> { _0: null }
+

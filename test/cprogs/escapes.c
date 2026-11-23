@@ -166,3 +166,18 @@ SEXP after_stored(SEXP x) { SEXP l = PROTECT(classed()); sum_stored(l, x); UNPRO
    when the argument is not read after (kept). */
 SEXP after_returned_copy(void) { SEXP l = PROTECT(classed()); SEXP y = sum_returns(l); UNPROTECT(1); return l; }
 SEXP after_returned_renaming(void) { SEXP l = PROTECT(classed()); SEXP y = sum_returns(l); UNPROTECT(1); return y; }
+
+/* ===== Functions of the R API that only read (types/base.ty), also
+   through an alias macro, as rlang names them; and one that stores. ===== */
+
+#define r_is_null Rf_isNull
+
+/* Summaries: none, none, escapes. */
+int api_reads(SEXP x) { return RAW_RO(x)[0]; }
+int api_reads_alias(SEXP x) { return r_is_null(x); }
+void api_stores(SEXP sym, SEXP x, SEXP env) { R_MakeActiveBinding(sym, x, env); }
+
+/* At the calls: kept, kept, forgotten. */
+SEXP after_api_read(void) { SEXP l = PROTECT(classed()); Rf_isNumeric(l); UNPROTECT(1); return l; }
+SEXP after_api_alias(void) { SEXP l = PROTECT(classed()); r_is_null(l); UNPROTECT(1); return l; }
+SEXP after_api_store(SEXP sym, SEXP env) { SEXP l = PROTECT(classed()); R_MakeActiveBinding(sym, l, env); UNPROTECT(1); return l; }
