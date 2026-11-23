@@ -88,7 +88,15 @@ let dotC_typeof typedef_map ct =
   | Ptr Float -> Vec.Vector (Prim.mk Prim.Dbl.any) |> Vec.mk |> Attr.mk_content
   | Ptr Ptr Char -> Vec.Vector (Prim.mk Prim.Chr.any) |> Vec.mk |> Attr.mk_content
   | Ptr Char -> Vec.Vector (Prim.mk Prim.Raw.any) |> Vec.mk |> Attr.mk_content (* Actually unsigned char* *)
-  | _ -> failwith (Printf.sprintf "Unsupported type for .C interface: %s. Only init*, double*, char** and unsigned char* are supported." (Ast.show_ctype ct))
+  (* [void *]: the prototypes R's registration skeleton writes for routines
+     without one (tools::package_native_routine_registration_skeleton), e.g.
+     every Fortran subroutine of mpath. Any vector the interface passes. *)
+  | Ptr Void ->
+    let vec p = Vec.Vector (Prim.mk p) |> Vec.mk |> Attr.mk_content in
+    [ vec Prim.Int.any ; vec Prim.Lgl.any ; vec Prim.Dbl.any ;
+      vec Prim.Chr.any ; vec Prim.Raw.any ]
+    |> List.fold_left Ty.cup Ty.empty
+  | _ -> failwith (Printf.sprintf "Unsupported type for .C interface: %s. Only int*, double*, char**, unsigned char* and void* are supported." (Ast.show_ctype ct))
 
 
 let infer_dotC ?(typedef_map = Ast.DeclMap.empty) ret_ty params =
@@ -189,7 +197,7 @@ let%test "infer_dotC rejects unsupported .C parameter types from a PAst function
   in
   let expected =
     Printf.sprintf
-      "Unsupported type for .C interface: %s. Only init*, double*, char** and unsigned char* are supported."
+      "Unsupported type for .C interface: %s. Only int*, double*, char**, unsigned char* and void* are supported."
       (Ast.show_ctype Ast.Int)
   in
   infer_dotC_failure past = Some expected

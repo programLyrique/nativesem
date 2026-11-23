@@ -1074,6 +1074,9 @@ and aux_assign_left_expression (e: assignment_left_expression) : A.e =
   | `Subs_exp expr -> aux_subscription_expression expr (*Like that so far, but may require special treatment *)
   | `Poin_exp expr -> aux_pointer_expression expr
   | `Field_exp expr -> aux_field_expression expr
+  (* A parenthesized lvalue, such as a dereference in parentheses followed by
+     [+= 2] (cli's ansi.c): the parentheses do not change the lvalue. *)
+  | `Paren_exp expr -> aux_paren_expr expr
   | _ -> (
     Boilerplate.map_assignment_left_expression () e |> Tree_sitter_run.Raw_tree.to_channel stderr ;
     failwith "Not supported yet: left side of assignment must be an identifier"
@@ -1604,7 +1607,17 @@ and aux_top_level_item_non_preproc defines (item : top_level_item) =
       (* the part with the parameters can also carry the information about pointers for the return type! *)
       let level, params = aux_params decl in
       let return_type = Ast.build_ptr level (aux_decl_spec decl_spec) in
-      let body = aux_body body in
+      (* A construct the conversion does not support yet fails this function
+         only, not the whole file (and the package): its body becomes a call
+         of an unbound name that says why, so that it is untypeable (and can
+         fall back to its C signature) while the others are typed. *)
+      let body =
+        try aux_body body
+        with Failure msg ->
+          Printf.eprintf "%s: %s\n%!" name msg ;
+          let pos = Mlsem.Common.Position.dummy in
+          (pos, A.Call ((pos, A.Id ("unsupported C construct: " ^ msg)), []))
+      in
       let body =
         match return_type with
         | Ast.Void -> ensure_void_return body
