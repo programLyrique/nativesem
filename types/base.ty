@@ -262,7 +262,10 @@ Rf_ScalarRaw: [c_int] --> raw1<> with {}
 Rf_ScalarComplex: [any] --> CLX1<> with {}
 Rf_xlengthgets: [vec | list | lang, c_int] --> any_sexp
 Rf_allocMatrix: (['a & prim, c_int, c_int] --> v('a)<> with { dim: INT }) & ([list, c_int, c_int] --> list<> with { dim: INT })
-Rf_allocArray: (['a & prim, INT] --> v('a)<> with { dim: INT }) & ([list, INT] --> list<> with { dim: INT })
+// Its result would be v('a)<> with { dim: INT } (as allocMatrix's), but then
+// vctrs' *_slice_shaped, which fill it through INTEGER(out) in strided
+// loops, take more than 60 s to infer instead of 3 (todos.md).
+Rf_allocArray: [any, any_sexp] --> any_sexp
 MAYBE_SHARED: [any_sexp] --> c_int
 NAMED: [any_sexp] --> c_int
 R_isResizable: [any_sexp] --> c_bool
