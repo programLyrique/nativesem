@@ -97,12 +97,9 @@ jobs:
           opam pin add rstt-repl git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF} --yes --no-action --ignore-pin-depends
           opam pin add rstt-bin  git+https://github.com/E-Sh4rk/rstt.git#${RSTT_REF} --yes --no-action --ignore-pin-depends
 
-      # FIX: cmdliner < 2, to fix "Unbound value Term.info" error (Term.info is
-      # gone in cmdliner 2). 1.3.0 still has it, and the bisect_ppx pinned below
-      # needs cmdliner >= 1.3.0. Pinned, so that installing bisect_ppx does not
-      # upgrade it.
-      - name: Pin cmdliner version
-        run: opam pin add cmdliner 1.3.0 --yes
+      # No cmdliner pin: r-parser's setup needs cmdliner >= 2, bin/main.ml uses
+      # the Cmd API (which cmdliner 2 keeps), and the bisect_ppx fork pinned
+      # below supports cmdliner 2 (as in tyr's Dockerfile).
 
       # Install r-parser dependency
       - name: Clone r-parser
