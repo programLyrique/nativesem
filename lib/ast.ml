@@ -329,12 +329,28 @@ let typeof_ctype ct =
            for their argument tuple; fixed-arity ones use the explicit tuple.
            A C function pointer is a bare arrow (no [Attr] wrap) — see
            [Ast.build_call]'s [pfun] projection, which accepts bare arrows. *)
-        let ret_ty = aux ret in
+        (* A function returning a [SEXP] may return the C [NULL]: callbacks
+           commonly do, to mean "nothing" (rlang's [r_attrib_map_fn], whose
+           [NULL] lets [R_mapAttrib] go on, as R's own callback API does).
+           [any_sexp] excludes it; without it, the callbacks that return
+           [NULL] could not be passed. Other pointer results are left as they
+           are: function pointers are also the C callables a package imports
+           (rlang's [r_format_error_arg], ...), which do not return [NULL]. *)
+        let ret_ty =
+          match ret with
+          | SEXP -> Ty.cup (aux ret) Cptr.null
+          | _ -> aux ret in
         let arg_ty =
           if variadic then Ty.any
           else Tuple.mk (List.map aux params)
         in
-        Arrow.mk arg_ty ret_ty
+        (* A function of the package, inferred from its body, is an arrow
+           wrapped in [Attr], as an R closure (cf. [CCustom "cattr"] in
+           [aux_e]); [&f] keeps that type ([&__1: ['a] --> *'a]). The pointer
+           also takes it, or no function of the package could be passed as a
+           callback. [AttrProj.proj] calls either. *)
+        let arrow = Arrow.mk arg_ty ret_ty in
+        Ty.cup arrow (Attr.mk { content = arrow ; classes = Classes.any ; attrs = Lst.any })
     | _ -> failwith ("Type not supported yet in typeof_ctype: " ^ show_ctype ct)
   in
   aux ct
@@ -399,7 +415,15 @@ module AttrProj = struct
   let pdom ty = Rstt.Ty.cup ty (Rstt.Attr.mk_content ty)
   let proj ty =
     if Rstt.Ty.leq ty arrow_any then ty
-    else try Rstt.Attr.proj_content ty with _ -> ty
+    else
+      try Rstt.Attr.proj_content ty
+      with _ ->
+        (* Both: a function pointer, which takes the functions of the package
+           as well as bare arrows (cf. [typeof_ctype]). *)
+        let bare = Rstt.Ty.cap ty arrow_any in
+        let wrapped = Rstt.Ty.cap ty Rstt.Attr.any in
+        if Rstt.Ty.is_empty wrapped then ty
+        else try Rstt.Ty.cup bare (Rstt.Attr.proj_content wrapped) with _ -> ty
 end
 
 module AttrConstr = struct
