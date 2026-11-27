@@ -344,13 +344,9 @@ let typeof_ctype ct =
           if variadic then Ty.any
           else Tuple.mk (List.map aux params)
         in
-        (* A function of the package, inferred from its body, is an arrow
-           wrapped in [Attr], as an R closure (cf. [CCustom "cattr"] in
-           [aux_e]); [&f] keeps that type ([&__1: ['a] --> *'a]). The pointer
-           also takes it, or no function of the package could be passed as a
-           callback. [AttrProj.proj] calls either. *)
-        let arrow = Arrow.mk arg_ty ret_ty in
-        Ty.cup arrow (Attr.mk { content = arrow ; classes = Classes.any ; attrs = Lst.any })
+        (* A function of the package, inferred from its body, is a bare arrow
+           too (cf. [Function] in [aux_e]): it can be passed as a callback. *)
+        Arrow.mk arg_ty ret_ty
     | _ -> failwith ("Type not supported yet in typeof_ctype: " ^ show_ctype ct)
   in
   aux ct
@@ -415,15 +411,7 @@ module AttrProj = struct
   let pdom ty = Rstt.Ty.cup ty (Rstt.Attr.mk_content ty)
   let proj ty =
     if Rstt.Ty.leq ty arrow_any then ty
-    else
-      try Rstt.Attr.proj_content ty
-      with _ ->
-        (* Both: a function pointer, which takes the functions of the package
-           as well as bare arrows (cf. [typeof_ctype]). *)
-        let bare = Rstt.Ty.cap ty arrow_any in
-        let wrapped = Rstt.Ty.cap ty Rstt.Attr.any in
-        if Rstt.Ty.is_empty wrapped then ty
-        else try Rstt.Ty.cup bare (Rstt.Attr.proj_content wrapped) with _ -> ty
+    else try Rstt.Attr.proj_content ty with _ -> ty
 end
 
 module AttrConstr = struct
@@ -879,25 +867,21 @@ let rec aux_e (eid, _decl, vars, e) =
       (* Suggested type decomposition, domain, type variable, body*)
       let lambda = A.Lambda ([], Some (GTy.mk @@ Tuple.mk arg_types), 
         MVariable.create Immut None, body) in
-        (* we could give a more precise type for the attributes: noclass But then it displays <> after the closures, which is
-          too much noise! *)
-        let fn =
-          A.Constructor
-            (CCustom { cname="cattr" ; cgen=true ; cdom=AttrConstr.cdom Rstt.Classes.any ; cons=AttrConstr.cons Rstt.Classes.any },
-             [Eid.unique(), lambda])
-        in
+        (* A C function is a bare arrow ([-->]), as are the functions of the
+           [.ty] files and the function pointers (cf. [typeof_ctype]): not an
+           R closure, which has attributes. *)
+        let fn = lambda in
         (match self with
          | None -> fn
          | Some self ->
            (* A recursive function: its recursive calls refer to [self], bound
               by a one-element [LambdaRec], whose value is the 1-tuple of the
               function. *)
-           (* [self] is annotated with the shape of a function value, an
-              attr-tagged arrow between inference variables (calls project
-              it with [pfun]); unannotated, it would be [any]. *)
+           (* [self] is annotated with the shape of a function value, a bare
+              arrow between inference variables (calls project it with
+              [pfun]); unannotated, it would be [any]. *)
            let tv () = TVar.typ (TVar.mk KInfer None) in
-           let self_ty =
-             GTy.mk (AttrConstr.cons Rstt.Classes.any [ Arrow.mk (tv ()) (tv ()) ]) in
+           let self_ty = GTy.mk (Arrow.mk (tv ()) (tv ())) in
            A.Projection (SA.Pi (1, 0),
              (Eid.unique (), A.LambdaRec [ (Some self_ty, self, (Eid.unique (), fn)) ])))
     | Switch (e, cases) ->

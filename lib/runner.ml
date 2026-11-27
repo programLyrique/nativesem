@@ -290,8 +290,8 @@ let bind_fallback ~report visible (idenv, env, decl) key v compute =
    requirement (an [INTEGER(x)] call) that the R side checks. Returns [None]
    when nothing is completed. *)
 let complete_degenerate vars typ declared =
-  (* An inferred function is attr-tagged ([cattr]: any classes and
-     attributes); a C signature is a bare arrow. *)
+  (* An inferred function and a C signature are bare arrows; an attr-tagged
+     one (an R closure) is also handled. *)
   let wrapped = Ty.leq typ Rstt.Attr.any && not (Ty.is_empty typ) in
   let content t = if wrapped then Rstt.Attr.proj_content t else t in
   let wrap t = if wrapped then Ast.AttrConstr.cons Rstt.Classes.any [ t ] else t in
@@ -1317,9 +1317,8 @@ let%test "declaration does not override existing full function" =
    typed, so the other inputs come back with the declared result. *)
 let%test "complete_degenerate restores the inputs a failing type lost" =
   let open Rstt in
-  let wrap t = Ast.AttrConstr.cons Classes.any [ t ] in
   let declared = Arrow.mk (Tuple.mk [ Cint.any_na ]) Defs.any_sexp in
-  let inferred = wrap (Arrow.mk (Tuple.mk [ Cint.ff ]) Ty.empty) in
+  let inferred = Arrow.mk (Tuple.mk [ Cint.ff ]) Ty.empty in
   match complete_degenerate MVarSet.empty inferred declared with
   | Some (completed, missing) ->
     Ty.equiv missing (Tuple.mk [ Ty.diff Cint.any_na Cint.ff ])
@@ -1328,11 +1327,10 @@ let%test "complete_degenerate restores the inputs a failing type lost" =
 
 let%test "complete_degenerate leaves error helpers and real results alone" =
   let open Rstt in
-  let wrap t = Ast.AttrConstr.cons Classes.any [ t ] in
   let declared = Arrow.mk (Tuple.mk [ Cint.any_na ]) Defs.any_sexp in
   (* Every input errors: the domain is whole, nothing was lost. *)
-  let helper = wrap (Arrow.mk (Tuple.mk [ Cint.any_na ]) Ty.empty) in
+  let helper = Arrow.mk (Tuple.mk [ Cint.any_na ]) Ty.empty in
   (* A narrow domain with a real result is a requirement, kept as is. *)
-  let narrow = wrap (Arrow.mk (Tuple.mk [ Cint.ff ]) Cint.tt) in
+  let narrow = Arrow.mk (Tuple.mk [ Cint.ff ]) Cint.tt in
   complete_degenerate MVarSet.empty helper declared = None
   && complete_degenerate MVarSet.empty narrow declared = None
