@@ -1,20 +1,20 @@
-larger_than_3: ∀'a. ([INT1 & 'a] -> INT1 & 'a) & ([^INT1 & 'a] -> ^INT1 & 'a)
+larger_than_3: ∀'a. ([INT1 & 'a] --> INT1 & 'a) & ([^INT1 & 'a] --> ^INT1 & 'a)
 
-size_bound: ∀'a. [vec1 & 'a] -> vec1 & 'a
+size_bound: ∀'a. [vec1 & 'a] --> vec1 & 'a
 
-bail_if: ([c_false, c_string] -> ()) & ([c_int_na \ c_false, c_string] -> empty)
+bail_if: ([c_false, c_string] --> ()) & ([c_int_na \ c_false, c_string] --> empty)
 
-cond_on_int: ∀'a. [c_false & 'a] -> c_false & 'a
+cond_on_int: ∀'a. [c_false & 'a] --> c_false & 'a
 
-isNull: [*c_int_na \ c_null] -> c_false
+isNull: [*c_int_na \ c_null] --> c_false
 
-C_escape_chars: [CHR] -> ()
+C_escape_chars: [CHR] --> ()
 
-C_escape_chars_one: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
+C_escape_chars_one: ∀'a. [any_sexp & 'a] --> any_sexp & 'a
 
-C_escape_chars2: ([CHR] -> CHR) & ([CHR1] -> CHR1)
+C_escape_chars2: ([CHR] --> CHR) & ([CHR1] --> CHR1)
 
 strstr: [c_string, c_string] --> c_string
 
-R_split_string: [CHR, CHR] -> CHR
+R_split_string: [CHR, CHR] --> CHR
 

@@ -1,82 +1,82 @@
 helper: [any_sexp] --> any_sexp
 
-kept_read: () -> { _0: null }<a> with {  }
+kept_read: () --> { _0: null }<a> with {  }
 
-kept_reprotect: () -> { _0: null }<a> with {  }
+kept_reprotect: () --> { _0: null }<a> with {  }
 
-renamed: () -> { _0: null }<a> with {  }
+renamed: () --> { _0: null }<a> with {  }
 
-copied: () -> { _0: null }
+copied: () --> { _0: null }
 
-copied_in_loop: [c_int_na] -> null | attr_any
+copied_in_loop: [c_int_na] --> null | attr_any
 
-stored_in_list: () -> { _0: null }
+stored_in_list: () --> { _0: null }
 
-stored_in_struct: () -> { _0: null }
+stored_in_struct: () --> { _0: null }
 
-passed: () -> { _0: null }<a> with {  }
+passed: () --> { _0: null }<a> with {  }
 
-addressed: () -> { _0: null }
+addressed: () --> { _0: null }
 
-helper: ∀'a. [any_sexp & 'a] -> any_sexp & 'a
+helper: ∀'a. [any_sexp & 'a] --> any_sexp & 'a
 
 unknown_function: [any_sexp] --> c_void
 
 sum_names: [any_sexp, any_sexp] --> c_void
 
-sum_reads: ([vec1] -> 1L<> with {  }) & ([(list | vec) | p(CHR)] -> ^INT1<> with {  })
+sum_reads: ([vec1] --> 1L<> with {  }) & ([(list | vec) | p(CHR)] --> ^INT1<> with {  })
 
-sum_returns: ∀'a. [any_sexp & 'a] -> 'a
+sum_returns: ∀'a. [any_sexp & 'a] --> 'a
 
-sum_names: [any_sexp, any_sexp] -> ()
+sum_names: [any_sexp, any_sexp] --> ()
 
-sum_class: [any_sexp] -> ()
+sum_class: [any_sexp] --> ()
 
-sum_dynamic: [any_sexp, any_sexp] -> ()
+sum_dynamic: [any_sexp, any_sexp] --> ()
 
-sum_via_copy: [any_sexp] -> ()
+sum_via_copy: [any_sexp] --> ()
 
-sum_via_callee: [any_sexp] -> ()
+sum_via_callee: [any_sexp] --> ()
 
-sum_via_returned: [any_sexp] -> ()
+sum_via_returned: [any_sexp] --> ()
 
-sum_stored: [any_sexp, list] -> ()
+sum_stored: [any_sexp, list] --> ()
 
-sum_field: [any_sexp, *struct holder] -> ()
+sum_field: [any_sexp, *struct holder] --> ()
 
-sum_unknown: [any_sexp] -> ()
+sum_unknown: [any_sexp] --> ()
 
-sum_pointer: [any_sexp, [any_sexp] --> c_void] -> ()
+sum_pointer: ∀'a. [any_sexp & 'a, [any_sexp] --> c_void] --> ()
 
 sum_even: [any_sexp, c_int_na] --> c_void
 
-sum_odd: [any_sexp, c_false] | [any_sexp, c_int_na \ c_false] -> ()
+sum_odd: [any_sexp, c_false] | [any_sexp, c_int_na \ c_false] --> ()
 
-sum_even: [any_sexp, c(1..)] | [any_sexp, c_int_na \ c(1..)] -> ()
+sum_even: [any_sexp, c(1..)] | [any_sexp, c_int_na \ c(1..)] --> ()
 
-classed: () -> { _0: null }<a> with {  }
+classed: () --> { _0: null }<a> with {  }
 
-after_reads: () -> { _0: null }<a> with {  }
+after_reads: () --> { _0: null }<a> with {  }
 
-after_names: () -> { _0: null }<a>
+after_names: () --> { _0: null }<a>
 
-after_class: () -> { _0: null }
+after_class: () --> { _0: null }
 
-after_stored: [list] -> { _0: null }
+after_stored: [list] --> { _0: null }
 
-after_returned_copy: () -> { _0: null }
+after_returned_copy: () --> { _0: null }
 
-after_returned_renaming: () -> { _0: null }<a> with {  }
+after_returned_renaming: () --> { _0: null }<a> with {  }
 
-api_reads: [raw] -> c_int
+api_reads: [raw] --> c_int
 
-api_reads_alias: ([null] -> c_true) & ([p(CHR) | sym | attr_any] -> c_false)
+api_reads_alias: ([null] --> c_true) & ([p(CHR) | sym | attr_any] --> c_false)
 
-api_stores: [sym, any_sexp, env] -> ()
+api_stores: [sym, any_sexp, env] --> ()
 
-after_api_read: () -> { _0: null }<a> with {  }
+after_api_read: () --> { _0: null }<a> with {  }
 
-after_api_alias: () -> { _0: null }<a> with {  }
+after_api_alias: () --> { _0: null }<a> with {  }
 
-after_api_store: [sym, env] -> { _0: null }
+after_api_store: [sym, env] --> { _0: null }
 

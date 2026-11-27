@@ -1,34 +1,34 @@
-check_interrupt_fn: [c_ptr] -> ()
+check_interrupt_fn: [c_ptr] --> ()
 
-pending_interrupt: () -> c_bool
+pending_interrupt: () --> c_bool
 
-build_extptr: ∀'a. ([INT, any_sexp & 'a, any_sexp] -> externalptr(c_int_na, attr_any | 'a)) & ([^INT1, any_sexp & 'a, any_sexp] -> externalptr(c_int, attr_any | 'a))
+build_extptr: ∀'a. ([INT, any_sexp & 'a, any_sexp] --> externalptr(c_int_na, attr_any | 'a)) & ([^INT1, any_sexp & 'a, any_sexp] --> externalptr(c_int, attr_any | 'a))
 
-typeof_of_any_sexp: [externalptr] -> (~vec)<...> | null | prim | sym
+typeof_of_any_sexp: [externalptr] --> (~vec)<...> | null | prim | sym
 
-tag_of: ∀'a. [externalptr(any, 'a)] -> 'a
+tag_of: ∀'a. [externalptr(any, 'a)] --> 'a
 
-first_of_tag: ∀'a. [externalptr(any, { 'a })] -> 'a
+first_of_tag: ∀'a. [externalptr(any, { 'a })] --> 'a
 
-retag: ∀'a. [externalptr, any_sexp & 'a] -> any_sexp & 'a
+retag: ∀'a. [externalptr, any_sexp & 'a] --> any_sexp & 'a
 
-typeof_of_car: ([lang] -> (~vec)<...> | null | prim | sym) & ([(~lang)<...> | null | p(CHR) | sym] -> c_false)
+typeof_of_car: ([lang] --> (~vec)<...> | null | prim | sym) & ([(~lang)<...> | null | p(CHR) | sym] --> c_false)
 
-xlength_of_list: ([list] -> c_int) & ([(~list)<...> | null | p(CHR) | sym] -> c_false)
+xlength_of_list: ([list] --> c_int) & ([(~list)<...> | null | p(CHR) | sym] --> c_false)
 
-last_list_elt: ∀'a. ([{ 'a }] -> 'a) & ([(~list)<...> | null | p(CHR) | sym] -> null)
+last_list_elt: ∀'a. ([{ 'a }] --> 'a) & ([(~list)<...> | null | p(CHR) | sym] --> null)
 
-typeof_of_eval: [any_sexp, env] -> (~vec)<...> | null | prim | sym
+typeof_of_eval: [any_sexp, env] --> (~vec)<...> | null | prim | sym
 
-lookup: [sym, env] -> any_sexp
+lookup: [sym, env] --> any_sexp
 
-R_init_rapi: [*any] -> ()
+R_init_rapi: [*any] --> ()
 
-copy: ∀'a. [*c_int_na & 'a, *c_int_na, c_int_na] -> 'a
+copy: ∀'a. [*c_int_na & 'a, *c_int_na, c_int_na] --> 'a
 
 R_make_altstring_class: [c_string, c_string, c_ptr] --> struct R_altrep_class_t
 
-altrep_init: [c_ptr] -> ()
+altrep_init: [c_ptr] --> ()
 
-altrep_make: [any_sexp] -> any_sexp
+altrep_make: [any_sexp] --> any_sexp
 

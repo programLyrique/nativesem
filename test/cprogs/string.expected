@@ -1,16 +1,16 @@
-create_str_from_c_string: () -> "hello"<> with {  }
+create_str_from_c_string: () --> "hello"<> with {  }
 
-create_str_from_chr: () -> "world"<> with {  }
+create_str_from_chr: () --> "world"<> with {  }
 
-create_str_from_concat: () -> "hello world"<> with {  }
+create_str_from_concat: () --> "hello world"<> with {  }
 
-get_c_string_from_str: ([CHR] -> c_string | c_null) & ([CHR1] -> c_string) & ([(clx | (~vec)<...>) | null | sym] -> c_null)
+get_c_string_from_str: ([CHR] --> c_string | c_null) & ([CHR1] --> c_string) & ([(clx | (~vec)<...>) | null | sym] --> c_null)
 
-is_blank_string: ([null] -> c_true) & ([null | p(CHR)] -> c_bool)
+is_blank_string: ([null] --> c_true) & ([null | p(CHR)] --> c_bool)
 
-to_char: ∀'a. ([p(CHR) & 'a] -> 'a) & (['a & ((env | externalptr | lang | list | (empty -> any)) | null)] -> na_string) & (['a & ((env | externalptr | lang | list | vec | (empty -> any)) | null | sym)] -> p(CHR))
+to_char: ∀'a. ([p(CHR) & 'a] --> 'a) & (['a & ((env | externalptr | lang | list | (empty -> any)) | null)] --> na_string) & (['a & ((env | externalptr | lang | list | vec | (empty -> any)) | null | sym)] --> p(CHR))
 
-make_url_names: () -> CHR
+make_url_names: () --> CHR
 
-R_parse: [p(CHR), any_sexp] | [(env | externalptr | lang | list | vec | (empty -> any)) | null | sym, any_sexp] -> ()
+R_parse: [p(CHR), any_sexp] | [(env | externalptr | lang | list | vec | (empty -> any)) | null | sym, any_sexp] --> ()
 

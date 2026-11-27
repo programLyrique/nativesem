@@ -1,20 +1,20 @@
-assign: ([*c_double] -> ()) & ([c_null] -> empty)
+assign: ([*c_double] --> ()) & ([c_null] --> empty)
 
-assign_in_array: ([*(*c_double)] -> ()) & ([*c_null] -> empty)
+assign_in_array: ([*(*c_double)] --> ()) & ([*c_null] --> empty)
 
-assign_in_struct: ([*struct S] -> ()) & ([c_null] -> empty)
+assign_in_struct: ([*struct S] --> ()) & ([c_null] --> empty)
 
-assign_n: [c_int_na] -> *struct S
+assign_n: [c_int_na] --> *struct S
 
-star_return: ∀'a,'b. [*(c_int_na & 'b) & 'a, c_int_na] -> *(c_int_na & 'b) & 'a
+star_return: ∀'a,'b. [*(c_int_na & 'b) & 'a, c_int_na] --> *(c_int_na & 'b) & 'a
 
-star_then_read: ∀'a. [*(c_int_na & 'a), c_int_na] -> 'a
+star_then_read: ∀'a. [*(c_int_na & 'a), c_int_na] --> 'a
 
-star_void: [*c_int_na, c_int_na] -> ()
+star_void: [*c_int_na, c_int_na] --> ()
 
-star_two_writes: [*c_int_na, c_int_na, c_int_na] -> ()
+star_two_writes: [*c_int_na, c_int_na, c_int_na] --> ()
 
-first: ∀'a. [*(c_int_na & 'a)] -> 'a
+first: ∀'a. [*(c_int_na & 'a)] --> 'a
 
-assign_alloc: [c_int_na] -> c_int_na
+assign_alloc: [c_int_na] --> c_int_na
 

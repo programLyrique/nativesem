@@ -1,20 +1,20 @@
-change_int: ∀'a. ([INT & 'a] -> INT & 'a) & ([^INT1 & 'a] -> ^INT1 & 'a)
+change_int: ∀'a. ([INT & 'a] --> INT & 'a) & ([^INT1 & 'a] --> ^INT1 & 'a)
 
-errorIntScalar: [INT1] -> ()
+errorIntScalar: [INT1] --> ()
 
-make_scalar: () -> INT1<> with {  }
+make_scalar: () --> INT1<> with {  }
 
-isIntScalar: ([INT] -> c_bool) & ([INT1] -> c_true) & ([(~INT)<...> | null | p(CHR) | sym] -> c_false)
+isIntScalar: ([INT] --> c_bool) & ([INT1] --> c_true) & ([(~INT)<...> | null | p(CHR) | sym] --> c_false)
 
-check: () -> c_false
+check: () --> c_false
 
-incr: [INT1] -> INT1<> with {  }
+incr: [INT1] --> INT1<> with {  }
 
 isFunction: ([empty -> any] --> c_true) & ([~(empty -> any)] --> c_false)
 
-isPrimitive: ([empty -> any] -> c_true) & ([(~(empty -> any))<...> | null | p(CHR) | sym] -> c_false)
+isPrimitive: ([empty -> any] --> c_true) & ([(~(empty -> any))<...> | null | p(CHR) | sym] --> c_false)
 
-isList: ([(~lang)<...> | p(CHR) | sym] -> c_false) & ([lang] | [null] -> c_true)
+isList: ([(~lang)<...> | p(CHR) | sym] --> c_false) & ([lang] | [null] --> c_true)
 
-isNewList: ([(~list)<...> | p(CHR) | sym] -> c_false) & ([list] | [null] -> c_true)
+isNewList: ([(~list)<...> | p(CHR) | sym] --> c_false) & ([list] | [null] --> c_true)
 

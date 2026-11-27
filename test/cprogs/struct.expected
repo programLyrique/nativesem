@@ -1,50 +1,50 @@
-f: [struct Point] -> ()
+f: [struct Point] --> ()
 
-g: () -> struct Point
+g: () --> struct Point
 
-h: ([*struct Point] -> ()) & ([c_null] -> empty)
+h: ([*struct Point] --> ()) & ([c_null] --> empty)
 
-h2: ([*struct Point] -> ()) & ([c_null] -> empty)
+h2: ([*struct Point] --> ()) & ([c_null] --> empty)
 
-i: ([*struct Point] -> ()) & ([c_null] -> empty)
+i: ([*struct Point] --> ()) & ([c_null] --> empty)
 
-i2: ([*struct Point] -> ()) & ([c_null] -> empty)
+i2: ([*struct Point] --> ()) & ([c_null] --> empty)
 
-ap_create_problem: [*c_double, c_int_na] -> *struct AP
+ap_create_problem: [*c_double, c_int_na] --> *struct AP
 
-unsat_iter: ([*struct UnsatB, *struct UnsatA] -> ()) & ([*struct UnsatB, c_null] | [c_null, *struct UnsatA] -> empty)
+unsat_iter: ([*struct UnsatB, *struct UnsatA] --> ()) & ([*struct UnsatB, c_null] | [c_null, *struct UnsatA] --> empty)
 
-anon_nested: ([*struct AnonOuter] -> c_int_na) & ([c_null] -> empty)
+anon_nested: ([*struct AnonOuter] --> c_int_na) & ([c_null] --> empty)
 
-anon_nested2: ([*struct AnonOuter2] -> c_int_na) & ([c_null] -> empty)
+anon_nested2: ([*struct AnonOuter2] --> c_int_na) & ([c_null] --> empty)
 
-anon_nested_cast: [c_ptr] -> *struct AnonOuter
+anon_nested_cast: [c_ptr] --> *struct AnonOuter
 
-anon_nested_ptr: ([*struct AnonOuterPtr] -> c_int_na) & ([c_null] -> empty)
+anon_nested_ptr: ([*struct AnonOuterPtr] --> c_int_na) & ([c_null] --> empty)
 
-init_use: ([*struct InitOpts] -> c_int_na) & ([c_null] -> empty)
+init_use: ([*struct InitOpts] --> c_int_na) & ([c_null] --> empty)
 
-init_partial: () -> c_int_na
+init_partial: () --> c_int_na
 
-init_full: () -> c_int_na
+init_full: () --> c_int_na
 
-init_zero: () -> c_int_na
+init_zero: () --> c_int_na
 
-init_positional: () -> c_int_na
+init_positional: () --> c_int_na
 
-sub_rows: ([*struct Costs, c_double] -> ()) & ([c_null, c_double] -> empty)
+sub_rows: ([*struct Costs, c_double] --> ()) & ([c_null, c_double] --> empty)
 
-set_n: [*struct Costs, c_int_na] -> ()
+set_n: [*struct Costs, c_int_na] --> ()
 
-local_write: () -> c_int_na
+local_write: () --> c_int_na
 
-second: ([*struct lnode] -> c_int_na) & ([c_null] -> empty)
+second: ([*struct lnode] --> c_int_na) & ([c_null] --> empty)
 
-text_len: ([*struct str] -> c_int_na) & ([c_null] -> empty)
+text_len: ([*struct str] --> c_int_na) & ([c_null] --> empty)
 
-num_d: ([*union num] -> c_double) & ([c_null] -> empty)
+num_d: ([*union num] --> c_double) & ([c_null] --> empty)
 
-init_int_poly_vec: ([*struct poly_vec({ shelter : any_sexp ; vec : INT })] -> ()) & ([c_null] -> empty)
+init_int_poly_vec: ([*struct poly_vec({ shelter : any_sexp ; vec : INT })] --> ()) & ([c_null] --> empty)
 
-reset_vec: ([*struct poly_vec, any_sexp] -> ()) & ([c_null, any_sexp] -> empty)
+reset_vec: ([*struct poly_vec, any_sexp] --> ()) & ([c_null, any_sexp] --> empty)
 

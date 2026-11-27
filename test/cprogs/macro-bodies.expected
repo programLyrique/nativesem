@@ -1,46 +1,46 @@
-KEEP: ∀'a. ['a] -> 'a
+KEEP: ∀'a. ['a] --> 'a
 
-ID: ∀'a. ['a] -> 'a
+ID: ∀'a. ['a] --> 'a
 
-TWICE: (tuple1 -> any) & ([c_int] -> c_int) & ([c_int_na] -> c_int_na) & ([c_double] -> c_double) & ([c_char] -> c_char)
+TWICE: (tuple1 --> any) & ([c_int] --> c_int) & ([c_int_na] --> c_int_na) & ([c_double] --> c_double) & ([c_char] --> c_char)
 
-SWAP: tuple2 -> ()
+SWAP: tuple2 --> ()
 
-use_keep: ∀'a. [any_sexp & 'a] -> 'a
+use_keep: ∀'a. [any_sexp & 'a] --> 'a
 
-use_id: ∀'a. [c_int_na & 'a] -> 'a
+use_id: ∀'a. [c_int_na & 'a] --> 'a
 
-use_twice: ([c_int] -> c_int) & ([c_int_na] -> c_int_na)
+use_twice: ([c_int] --> c_int) & ([c_int_na] --> c_int_na)
 
 NOT_C: tuple1 --> any
 
-FIRST_POS: [*(~c(1..)) | c_string, any, any] | [*c(1..), any, any] -> ()
+FIRST_POS: [*(~c(1..)) | c_string, any, any] | [*c(1..), any, any] --> ()
 
-use_try: ∀'a. [c_false] | [c_int_na \ c_false & 'a] -> c_false | 'a
+use_try: ∀'a. [c_false] | [c_int_na \ c_false & 'a] --> c_false | 'a
 
-PRESERVE: [any_sexp] -> c_void
+PRESERVE: [any_sexp] --> c_void
 
-use_preserve: [any_sexp] -> ()
+use_preserve: [any_sexp] --> ()
 
-use_check: ∀'a. ([c(1..) & 'a] -> c(1..) & 'a) & ([c_int_na \ c(1..) & 'a] -> c(-1))
+use_check: ∀'a. ([c(1..) & 'a] --> c(1..) & 'a) & ([c_int_na \ c(1..) & 'a] --> c(-1))
 
-use_stop: [c_int_na] -> c_int
+use_stop: [c_int_na] --> c_int
 
 g2: [c_int_na, c_int_na] --> c_int_na
 
-use_call_err: [c_int_na, c_int_na] -> c(-1..0)
+use_call_err: [c_int_na, c_int_na] --> c(-1..0)
 
-r_attrib_poke_names: [any_sexp, any_sexp] -> attr_any
+r_attrib_poke_names: [any_sexp, any_sexp] --> attr_any
 
-r_attrib_zap: [any_sexp, any_sexp] -> ()
+r_attrib_zap: [any_sexp, any_sexp] --> ()
 
-r_attrib_clone_from: [any_sexp, any_sexp] -> ()
+r_attrib_clone_from: [any_sexp, any_sexp] --> ()
 
-use_poke_names: ∀'a. [any_sexp & 'a, any_sexp] -> attr_any | any_sexp & 'a
+use_poke_names: ∀'a. [any_sexp & 'a, any_sexp] --> attr_any | any_sexp & 'a
 
-use_zap: [any_sexp] -> ()
+use_zap: [any_sexp] --> ()
 
-use_clone: [any_sexp, any_sexp] -> ()
+use_clone: [any_sexp, any_sexp] --> ()
 
 Creating fresh variable: out
 NAME_OUT:
@@ -49,5 +49,5 @@ Creating fresh variable: NAME_OUT
 use_name_out:
 untypeable: unbound variable
 name: NAME_OUT
-poke_names_keeps_class: [any_sexp] -> { _0: null }<a>
+poke_names_keeps_class: [any_sexp] --> { _0: null }<a>
 

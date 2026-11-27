@@ -4,11 +4,11 @@ log_line: [c_int_na] --> c_void
 
 len: [c_string] --> c_int_na
 
-use_file: () -> ()
+use_file: () --> ()
 
-use_line: () -> ()
+use_line: () --> ()
 
-use_date_time: () -> ()
+use_date_time: () --> ()
 
-file_len: () -> c_int_na
+file_len: () --> c_int_na
 

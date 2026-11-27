@@ -1,2 +1,2 @@
-ap_create: [c_int_na] -> *struct AP
+ap_create: [c_int_na] --> *struct AP
 

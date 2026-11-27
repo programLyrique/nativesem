@@ -4,5 +4,5 @@ rlbin_: [*c_double, *c_int_na] --> c_void
 
 scale_: [*c_double, *c_int_na, *c_double] --> c_void
 
-scale_twice: [*c_double, *c_int_na, *c_double] -> ()
+scale_twice: [*c_double, *c_int_na, *c_double] --> ()
 

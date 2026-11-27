@@ -1,8 +1,8 @@
-test_simple_cast: () -> c_int_na
+test_simple_cast: () --> c_int_na
 
-test_multiple_casts: () -> c_int_na
+test_multiple_casts: () --> c_int_na
 
-test_nested_cast: () -> c_int_na
+test_nested_cast: () --> c_int_na
 
-test_ptr_cast: () -> c_int_na
+test_ptr_cast: () --> c_int_na
 

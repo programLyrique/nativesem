@@ -1,18 +1,18 @@
-use_bit: () -> c_true
+use_bit: () --> c_true
 
-use_mask: () -> c(3)
+use_mask: () --> c(3)
 
-use_version: () -> c(66051)
+use_version: () --> c(66051)
 
-use_half: () -> c_double
+use_half: () --> c_double
 
-use_f_ab: () -> c(3)
+use_f_ab: () --> c(3)
 
-use_f_shifted: () -> c(16)
+use_f_shifted: () --> c(16)
 
-use_f_version: () -> c(66051)
+use_f_version: () --> c(66051)
 
-use_hex_e: () -> c(2654435769)
+use_hex_e: () --> c(2654435769)
 
-use_hex_E: () -> c(229)
+use_hex_E: () --> c(229)
 

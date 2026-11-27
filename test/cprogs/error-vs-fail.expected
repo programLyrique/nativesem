@@ -2,5 +2,5 @@ assertPositive_error:
 untypeable: untypeable application
 function: arrow
 argument: [c("Input is not positive")]
-assertPositive_fail: ∀'a. [DBL1 & 'a] -> DBL1 & 'a
+assertPositive_fail: ∀'a. [DBL1 & 'a] --> DBL1 & 'a
 

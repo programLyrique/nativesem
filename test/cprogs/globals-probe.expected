@@ -1,32 +1,32 @@
-use_ext_sexp: () -> any_sexp
+use_ext_sexp: () --> any_sexp
 
-use_ext_int: () -> c_int_na
+use_ext_int: () --> c_int_na
 
-use_ext_const_int: () -> c_int_na
+use_ext_const_int: () --> c_int_na
 
-use_def_sexp: () -> any_sexp
+use_def_sexp: () --> any_sexp
 
-use_def_int: () -> c_int_na
+use_def_int: () --> c_int_na
 
-use_def_int_42: () -> c_int_na
+use_def_int_42: () --> c_int_na
 
-use_def_const_int_42: () -> c_int_na
+use_def_const_int_42: () --> c_int_na
 
-use_def_sexp_nil: () -> any_sexp
+use_def_sexp_nil: () --> any_sexp
 
-use_stat_sexp: () -> any_sexp
+use_stat_sexp: () --> any_sexp
 
-use_stat_int_7: () -> c_int_na
+use_stat_int_7: () --> c_int_na
 
-use_def_arr: [c_int_na] -> c_int_na
+use_def_arr: [c_int_na] --> c_int_na
 
-use_def_pt_x: () -> c_int_na
+use_def_pt_x: () --> c_int_na
 
-use_ext_sexp_A: () -> any_sexp
+use_ext_sexp_A: () --> any_sexp
 
-use_ext_sexp_B: () -> any_sexp
+use_ext_sexp_B: () --> any_sexp
 
-set_def_int: [c_int_na] -> ()
+set_def_int: [c_int_na] --> ()
 
-get_def_int: () -> c_int_na
+get_def_int: () --> c_int_na
 

@@ -1,74 +1,74 @@
-first_class: [any_sexp] -> p(CHR)
+first_class: [any_sexp] --> p(CHR)
 
-n_classes: [any_sexp] -> c_int
+n_classes: [any_sexp] --> c_int
 
-names: [any_sexp] -> CHR | null
+names: [any_sexp] --> CHR | null
 
-dim: [any_sexp] -> INT | null
+dim: [any_sexp] --> INT | null
 
-levels: [any_sexp] -> CHR | null
+levels: [any_sexp] --> CHR | null
 
-dimnames: [any_sexp] -> list | null
+dimnames: [any_sexp] --> list | null
 
-row_names: [any_sexp] -> (CHR | INT) | null
+row_names: [any_sexp] --> (CHR | INT) | null
 
-set_class: [any_sexp] -> <myclass>
+set_class: [any_sexp] --> <myclass>
 
-set_class_on_list: () -> { _0: null, _1: null }<myclass> with {  }
+set_class_on_list: () --> { _0: null, _1: null }<myclass> with {  }
 
-set_class_unknown: [any_sexp, any_sexp] -> attr_any
+set_class_unknown: [any_sexp, any_sexp] --> attr_any
 
-set_class_buildup: [any_sexp] -> <data.frame, tbl_df>
+set_class_buildup: [any_sexp] --> <data.frame, tbl_df>
 
-set_class_buildup_partial: [any_sexp] -> <a>
+set_class_buildup_partial: [any_sexp] --> <a>
 
-refined_class: [any_sexp] -> "myclass"
+refined_class: [any_sexp] --> "myclass"
 
-refined_class_length: [any_sexp] -> c_true
+refined_class_length: [any_sexp] --> c_true
 
-refined_class_first: [any_sexp] -> p("myclass")
+refined_class_first: [any_sexp] --> p("myclass")
 
-dim_roundtrip_constructed: [any_sexp] -> INT
+dim_roundtrip_constructed: [any_sexp] --> INT
 
-install_roundtrip_constructed: [any_sexp] -> "hello"<> with {  }
+install_roundtrip_constructed: [any_sexp] --> "hello"<> with {  }
 
-dim_roundtrip_arg: ∀'a. [any_sexp, any_sexp & 'a] -> INT | 'a & (INT | null)
+dim_roundtrip_arg: ∀'a. [any_sexp, any_sexp & 'a] --> INT | 'a & (INT | null)
 
-class_then_dim_keeps_class: [any_sexp] -> "myclass"
+class_then_dim_keeps_class: [any_sexp] --> "myclass"
 
-get_unset_attr: [any_sexp] -> INT | null
+get_unset_attr: [any_sexp] --> INT | null
 
-get_dynamic_attr: [any_sexp, any_sexp] -> any_sexp
+get_dynamic_attr: [any_sexp, any_sexp] --> any_sexp
 
-set_attr_on_param_return_param: [any_sexp] -> any with { dim: INT<> with {  }, any }
+set_attr_on_param_return_param: [any_sexp] --> any with { dim: INT<> with {  }, any }
 
-set_class_on_param_return_param: [any_sexp] -> <myclass>
+set_class_on_param_return_param: [any_sexp] --> <myclass>
 
-make_factor: () -> INT<factor> with { levels: CHR }
+make_factor: () --> INT<factor> with { levels: CHR }
 
-factor_levels: () -> CHR
+factor_levels: () --> CHR
 
-named_list_names: () -> CHR
+named_list_names: () --> CHR
 
-unnamed_list_names: () -> null
+unnamed_list_names: () --> null
 
-set_names_on_list: () -> { a: null, b: null }<> with { names: CHR }
+set_names_on_list: () --> { a: null, b: null }<> with { names: CHR }
 
-set_names_then_get: () -> CHR
+set_names_then_get: () --> CHR
 
-scalar_real: () -> DBL1<> with {  }
+scalar_real: () --> DBL1<> with {  }
 
-scalar_integer: () -> 3L<> with {  }
+scalar_integer: () --> 3L<> with {  }
 
-scalar_logical: () -> tt<> with {  }
+scalar_logical: () --> tt<> with {  }
 
-make_string: () -> "a"<> with {  }
+make_string: () --> "a"<> with {  }
 
-scalar_string: () -> "b"<> with {  }
+scalar_string: () --> "b"<> with {  }
 
-alloc_vector: ([c_int] -> DBL<> with {  }) & ([c_true] -> DBL1<> with {  })
+alloc_vector: ([c_int] --> DBL<> with {  }) & ([c_true] --> DBL1<> with {  })
 
-make_named_int: () -> INT<> with { names: CHR }
+make_named_int: () --> INT<> with { names: CHR }
 
-with_dim: () -> INT<> with { dim: INT }
+with_dim: () --> INT<> with { dim: INT }
 

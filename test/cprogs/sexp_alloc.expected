@@ -1,8 +1,8 @@
-alloc_int_literal: ([c_int] -> INT<> with {  }) & ([c_true] -> INT1<> with {  })
+alloc_int_literal: ([c_int] --> INT<> with {  }) & ([c_true] --> INT1<> with {  })
 
-alloc_int_enum: ([c_int] -> INT<> with {  }) & ([c_true] -> INT1<> with {  })
+alloc_int_enum: ([c_int] --> INT<> with {  }) & ([c_true] --> INT1<> with {  })
 
-alloc_double_define: ([c_int] -> DBL<> with {  }) & ([c_true] -> DBL1<> with {  })
+alloc_double_define: ([c_int] --> DBL<> with {  }) & ([c_true] --> DBL1<> with {  })
 
 alloc_oob:
 untypeable: untypeable application

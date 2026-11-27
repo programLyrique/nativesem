@@ -1,6 +1,6 @@
-head: ([*struct node] -> c_int_na) & ([c_null] -> empty)
+head: ([*struct node] --> c_int_na) & ([c_null] --> empty)
 
-tail: ([*struct node] -> *struct node) & ([c_null] -> empty)
+tail: ([*struct node] --> *struct node) & ([c_null] --> empty)
 
-root: ([*struct tree] -> c_int_na) & ([c_null] -> empty)
+root: ([*struct tree] --> c_int_na) & ([c_null] --> empty)
 

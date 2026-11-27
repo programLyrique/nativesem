@@ -1,8 +1,8 @@
 Rf_xlength: ([null] --> c_false) & ([vec1] --> c_true) & ([any_sexp] --> c_int) & ([(externalptr | (empty -> any)) | sym] --> c_true)
 
-r_length: ([null] -> c_false) & ([any_sexp] -> c_int) & ([(externalptr | vec1 | (empty -> any)) | sym] -> c_true)
+r_length: ([null] --> c_false) & ([any_sexp] --> c_int) & ([(externalptr | vec1 | (empty -> any)) | sym] --> c_true)
 
-my_length: ([null] -> c_false) & ([any_sexp] -> c_int) & ([(externalptr | vec1 | (empty -> any)) | sym] -> c_true)
+my_length: ([null] --> c_false) & ([any_sexp] --> c_int) & ([(externalptr | vec1 | (empty -> any)) | sym] --> c_true)
 
-raw_length: ([null] -> c_false) & ([any_sexp] -> c_int) & ([(externalptr | vec1 | (empty -> any)) | sym] -> c_true)
+raw_length: ([null] --> c_false) & ([any_sexp] --> c_int) & ([(externalptr | vec1 | (empty -> any)) | sym] --> c_true)
 
