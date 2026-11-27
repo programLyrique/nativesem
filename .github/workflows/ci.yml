@@ -13,11 +13,11 @@ jobs:
       # Known-good pins of the SSTT/MLsem/RSTT stack. RSTT here is the
       # length-free vector representation (Vec.Vector / Vec.Scalar); the
       # types/*.ty files and lib/defs.ml are written against it.
-      # SSTT/MLsem follow their main branches as of 2026-11-25, the versions
+      # SSTT/MLsem follow their main branches as of 2026-11-27, the versions
       # Rsem's opam file tracks (#main): tyr builds NativeSem and Rsem in one
       # workspace, so the two must agree, and the Dockerfile pins the same.
       SSTT_REF: 33c39aeee2676f5c5c6d6c61a5a1edba862292db
-      MLSEM_REF: 58ccf80f5f33c3e542503f03f75aab2ae581cc7d
+      MLSEM_REF: bc0e1cd4f7d4bc1c95333f71d3091cfe72ba5079
       RSTT_REF: d8e03198b72409cea0035746286e8a7b966b9537
       # bisect_ppx's releases do not build with OCaml 5.5 (they need
       # ppxlib < 0.36): a fork with its PR #448 adapted to OCaml 5.5, as in

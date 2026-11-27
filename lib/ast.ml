@@ -614,7 +614,7 @@ let rec aux_e (eid, _decl, vars, e) =
     match e with
     | Const c -> A.Value (typeof_const c |> GTy.mk )
     | Id v -> A.Var v
-    | Declare (v,e) -> A.Declare (v, aux_e e)
+    | Declare (v,e) -> A.Declare ([], v, aux_e e)
     | Let (v,e1,e2) -> A.Let ([], v, aux_e e1, aux_e e2)
     | VarAssign (v,e2) -> A.VarAssign (v, aux_e e2)
     | Unop (op,e) -> aux (Call ((Eid.unique (), DeclMap.empty, vars, Id op), [e]))
